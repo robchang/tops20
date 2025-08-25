@@ -2,7 +2,7 @@
 */
 /* $Id: cenv.h,v 2.6 2002/03/28 16:48:50 klh Exp $
 */
-/*  Copyright © 2001 Kenneth L. Harrenstien
+/*  Copyright Â© 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -159,14 +159,15 @@
 #ifndef  CENV_SYS_W2K		/* MS W2K */
 # define CENV_SYS_W2K 0
 #endif
+#ifndef  CENV_SYS_EMSCRIPTEN	/* WebAssembly / Emscripten */
+# define CENV_SYS_EMSCRIPTEN 0
+#endif
 
 /* If none of the above were set, try a few semi-standard checks,
  * but don't complain if nothing's found.
  */
-#if !(CENV_SYS_V7|CENV_SYS_SUN|CENV_SYS_SOLARIS|CENV_SYS_NEXT|CENV_SYS_MAC \
-     |CENV_SYS_BSDI|CENV_SYS_NETBSD|CENV_SYS_FREEBSD|CENV_SYS_OPENBSD \
-     |CENV_SYS_DECOSF|CENV_SYS_LINUX|CENV_SYS_W2K)
-# if defined(__osf__) && defined(__digital__)
+ // Platform auto-detection
+#if defined(__osf__) && defined(__digital__)
 #  undef  CENV_SYS_DECOSF
 #  define CENV_SYS_DECOSF 1
 # elif defined(__FreeBSD__)
@@ -194,7 +195,23 @@
 #  undef  CENV_SYS_T20		/* Not quite right, but close enough */
 #  define CENV_SYS_T20 1
 # endif
-#endif
+/* end platform auto-detection */
+
+/* Explicit Emscripten override */
+#if defined(__EMSCRIPTEN__)
+# undef  CENV_SYS_EMSCRIPTEN
+# define CENV_SYS_EMSCRIPTEN 1
+# undef  CENV_SYS_LINUX
+# define CENV_SYS_LINUX 0
+   /* Let Emscripten use its POSIX-like features - only disable truly unsupported ones */
+# undef HAVE_FORK
+# define HAVE_FORK 0
+# undef HAVE_EXECVE  
+# define HAVE_EXECVE 0
+# undef HAVE_MMAP
+# define HAVE_MMAP 0
+   /* Keep Emscripten's native POSIX support for signals, timers, terminals */
+#endif /* __EMSCRIPTEN__ */
 
 
 /* Derive composite switches - may not be entirely accurate,
@@ -209,7 +226,9 @@
 		      |CENV_SYS_LINUX)
 #endif
 #define CENV_SYS_SVR4 0	/* XXX Later: (CENV_SYS_SOLARIS|CENV_SYS_DECOSF) ? */
-#define CENV_SYS_UNIX (CENV_SYS_V7|CENV_SYS_BSD|CENV_SYS_SVR4)	/* Any Unix */
+#ifndef CENV_SYS_UNIX
+# define CENV_SYS_UNIX (CENV_SYS_V7|CENV_SYS_BSD|CENV_SYS_SVR4|CENV_SYS_EMSCRIPTEN)	/* Any Unix */
+#endif
 
 /* Specific OS Feature defs
    This only has features of interest for KLH10 software.

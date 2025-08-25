@@ -1,0 +1,7 @@
+ac_cv_func_fork=no
+ac_cv_func_execve=no
+ac_cv_func_mmap=yes
+ac_cv_header_sys_socket_h=yes
+ac_cv_header_sys_time_h=yes
+ac_cv_have_pthread=yes
+cross_compiling=yes

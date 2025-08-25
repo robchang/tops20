@@ -2,7 +2,7 @@
 */
 /* $Id: dpsup.c,v 2.5 2003/02/23 18:16:05 klh Exp $
 */
-/*  Copyright © 1994, 2001 Kenneth L. Harrenstien
+/*  Copyright Â© 1994, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -48,6 +48,34 @@ static int decosfcclossage;
 #endif
 
 #include "dpsup.h"
+
+#if CENV_SYS_EMSCRIPTEN
+#include <errno.h>
+#include <stdio.h>
+
+int dp_init(dp_t *dp, size_t a, int b, int c, size_t in, int d, int e, size_t out) {
+    (void)dp;(void)a;(void)b;(void)c;(void)in;(void)d;(void)e;(void)out;
+    errno = ENOSYS; return -1;
+}
+int dp_start(dp_t *dp, char *pgm) { (void)dp;(void)pgm; errno = ENOSYS; return -1; }
+int dp_stop(dp_t *dp, int timeout) { (void)dp;(void)timeout; errno = ENOSYS; return -1; }
+int dp_reset(dp_t *dp) { (void)dp; errno = ENOSYS; return -1; }
+int dp_term(dp_t *dp, int timeout) { (void)dp;(void)timeout; errno = ENOSYS; return -1; }
+void dp_exit(dp_t *dp, int res) { (void)dp;(void)res; }
+int dp_main(dp_t *dp, int argc, char **argv) { (void)dp;(void)argc;(void)argv; errno = ENOSYS; return -1; }
+void dp_sigwait(void) { }
+void dp_sleep(int secs) { (void)secs; }
+char *dp_strerror(int err) { (void)err; return "UNIMPLEMENTED"; }
+
+/* Additional device process communication stubs for Emscripten */
+int dp_xstest(dpx_t *dx) { (void)dx; return 0; }
+unsigned char *dp_xsbuff(dpx_t *dx, size_t *len) { (void)dx; (void)len; return NULL; }
+void dp_xsend(dpx_t *dx, int cmd, size_t len) { (void)dx; (void)cmd; (void)len; }
+int dp_xrtest(dpx_t *dx) { (void)dx; return 0; }
+void dp_xrdone(dpx_t *dx) { (void)dx; }
+int dp_xrcmd(dpx_t *dx) { (void)dx; return 0; }
+
+#else
 
 #if CENV_SYS_DECOSF || CENV_SYS_SUN || CENV_SYS_SOLARIS || CENV_SYS_XBSD || CENV_SYS_LINUX
 # include <sys/types.h>
@@ -756,3 +784,4 @@ dp_sleep(int secs)
 }
 
 #endif /* KLH10_DEV_DP */
+#endif /* CENV_SYS_EMSCRIPTEN */

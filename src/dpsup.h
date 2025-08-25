@@ -2,7 +2,7 @@
 */
 /* $Id: dpsup.h,v 2.4 2002/04/24 07:46:15 klh Exp $
 */
-/*  Copyright © 1994, 2001 Kenneth L. Harrenstien
+/*  Copyright Â© 1994, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -144,14 +144,18 @@ struct dpx_s {
     int dpx_waktyp;		/* R: How to wake up rcpt */
     int dpx_wakflg;		/* R/S: R sets 1 when trying to do wake */
     int dpx_waksig;		/* C: Signal # to use */
+#if !CENV_SYS_EMSCRIPTEN
     sigset_t dpx_wakmsk;	/* C: Mask for signal # */
+#endif
     int dpx_wakpid;
     unsigned char *dpx_rbuf;	/* R: R's ptr into buffer */
 
     int dpx_dontyp;		/* S: How to Ack sender */
     int dpx_donflg;		/* S/R: S sets 1 when trying to do ack */
     int dpx_donsig;		/* C: Signal # to use */
+#if !CENV_SYS_EMSCRIPTEN
     sigset_t dpx_donmsk;	/* C: Mask for signal # */
+#endif
     int dpx_donpid;
     unsigned char *dpx_sbuf;	/* S: S's ptr into same buffer */
 #endif

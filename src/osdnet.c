@@ -2,7 +2,7 @@
 */
 /* From: $Id: osdnet.c,v 2.8 2003/02/23 18:22:08 klh Exp $
 */
-/*  Copyright © 1999, 2001 Kenneth L. Harrenstien
+/*  Copyright Â© 1999, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -27,6 +27,49 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <time.h>
+
+#if defined(__EMSCRIPTEN__)
+#include <stdio.h>
+#include <errno.h>
+#include <sys/types.h>
+struct ifent; struct pfdata; struct osnpf; struct in_addr;
+typedef int ossock_t;
+/* Stubbed networking for WebAssembly Demo Mode */
+int osn_ifsock(char *ifnam, ossock_t *s) { fprintf(stderr, "UNIMPLEMENTED: osdnet:osn_ifsock\n"); errno = ENOSYS; return -1; }
+int osn_ifclose(ossock_t s) { fprintf(stderr, "UNIMPLEMENTED: osdnet:osn_ifclose\n"); errno = ENOSYS; return -1; }
+int osn_iftab_init(void) { fprintf(stderr, "UNIMPLEMENTED: osdnet:osn_iftab_init\n"); return 0; }
+int osn_nifents(void) { return 0; }
+struct ifent *osn_iflookup(char *ifnam) { return NULL; }
+struct ifent *osn_ifcreate(char *ifnam) { return NULL; }
+int osn_ifealookup(char *ifnam, unsigned char *eap) { return 0; }
+int osn_ifiplookup(char *ifnam, unsigned char *ipa) { return 0; }
+int osn_ifnmlookup(char *ifnam, unsigned char *ipa) { return 0; }
+int osn_arp_stuff(char *ifnam, unsigned char *ipa, unsigned char *eap, int pubf) { return 0; }
+int osn_arp_look(struct in_addr *ipa, unsigned char *eap) { return 0; }
+void osn_pfinit(struct pfdata *pfdata, struct osnpf *osnpf, void *pfarg) { fprintf(stderr, "UNIMPLEMENTED: osdnet:osn_pfinit\n"); }
+ssize_t osn_pfread(struct pfdata *pfdata, void *buf, size_t nbytes) { return -1; }
+int osn_pfwrite(struct pfdata *pfdata, const void *buf, size_t nbytes) { return -1; }
+void osn_pfdeinit(struct pfdata *pfdata, struct osnpf *osnpf) { }
+#endif /* __EMSCRIPTEN__ */
+
+#ifndef __EMSCRIPTEN__   /* Only compile the native networking code if not targeting Emscripten */
+
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#if !defined(__EMSCRIPTEN__)
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <net/if.h>
+#ifdef __APPLE__
+#include <net/if_dl.h>
+#endif
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#else
+#include <time.h>   /* Emscripten fallback: avoid sys/types.h and sys/socket.h */
+#endif /* !__EMSCRIPTEN__ */
 
 /* The possible configuration macro definitions, with defaults:
  */
@@ -2687,3 +2730,6 @@ dumppkt(unsigned char *ucp, int cnt)
 */
 
 #endif /* if 0 - still-excluded code */
+
+#endif /* !__EMSCRIPTEN__ */
+#endif /* end of __EMSCRIPTEN__ stub section */

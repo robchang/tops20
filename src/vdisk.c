@@ -2,7 +2,7 @@
 */
 /* $Id: vdisk.c,v 2.5 2002/05/21 09:47:06 klh Exp $
 */
-/*  Copyright © 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright Â© 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -39,6 +39,15 @@
 #include "word10.h"
 #include "osdsup.h"
 #include "vdisk.h"
+
+#if defined(__EMSCRIPTEN__)
+/* Stub out vdisk for WebAssembly builds (no disk I/O supported) */
+int vdk_init(struct vdk_unit *d, void (*errhdlr)(struct vdk_unit *, char *), char *arg) { return -1; }
+int vdk_mount(struct vdk_unit *d, char *path, int wrtf) { return -1; }
+int vdk_unmount(struct vdk_unit *d) { return -1; }
+int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) { return 0; }
+int vdk_write(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) { return 0; }
+#else
 
 #ifdef RCSID
  RCSID(vdisk_c,"$Id: vdisk.c,v 2.5 2002/05/21 09:47:06 klh Exp $")
@@ -1078,3 +1087,5 @@ vdk_mapio(struct vdk_unit *d,
 }
 
 #endif /* VDK_DISKMAP */
+
+#endif /* !__EMSCRIPTEN__ */

@@ -2,7 +2,7 @@
 */
 /* $Id: osdsup.h,v 2.9 2002/04/24 07:56:08 klh Exp $
 */
-/*  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright Â© 1992, 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -46,6 +46,67 @@
 
 #include "word10.h"	/* Needed for protos */
 
+#if defined(__EMSCRIPTEN__)
+# include <time.h>
+# include <stdio.h>
+# include <stddef.h>
+typedef int osfd_t;
+typedef long osdaddr_t;
+# define OS_MAXPATHLEN 512
+# undef HAVE_SIGACTION
+
+/* Extra Emscripten compatibility typedefs */
+typedef int key_t;
+typedef int ossock_t;
+#define IFNAMSIZ 16
+#define SIGUSR1 10
+
+/* Emscripten stub for sigset_t */
+#ifndef __EMSCRIPTEN__
+typedef unsigned long sigset_t;
+#endif
+
+#ifndef OSRTM_T_DEFINED
+#define OSRTM_T_DEFINED
+typedef struct { long tv_sec; long tv_usec; } osrtm_t;
+#  define OS_RTM_SEC(rtm) ((rtm).tv_sec)
+#  define OS_RTM_USEC(rtm) ((rtm).tv_usec)
+#endif
+
+#ifndef OSSTM_T_DEFINED
+#define OSSTM_T_DEFINED
+typedef struct { long tv_sec; long tv_nsec; } osstm_t;
+# define OS_STM_SEC(stm)  ((stm).tv_sec)
+# define OS_STM_USEC(stm) ((stm).tv_nsec/1000)
+# define OS_STM_SET(stm, sec) (((stm).tv_sec = sec), ((stm).tv_nsec = 0))
+# define OS_STM_MSET(stm, ms) (((stm).tv_sec = (ms/1000)), ((stm).tv_nsec = (ms%1000)*1000000))
+#endif
+
+/* Dummy replacements for missing Unix types/constants */
+typedef unsigned char u_char;
+typedef unsigned short u_short;
+typedef char char8;
+#define NULLDEV "/dev/null"
+
+/* Dummy network structs for Emscripten */
+struct ether_addr { unsigned char octet[6]; };
+struct ifreq { char ifr_name[16]; };
+struct ether_header { unsigned char dummy[14]; };
+struct ether_arp { unsigned char dummy[28]; };
+#define ETHER_ADDR_LEN 6
+#define ETHERTYPE_ARP 0x0806
+#define ETHERTYPE_IP  0x0800
+#define ARPHRD_ETHER  1
+
+#define FD_STDIN 0
+#define FD_STDOUT 1
+#define O_BSIZE_8 0
+#define SIGMAX 64
+
+#define OSD_PATH_EXTSEPCHAR '.'
+#define OSD_PATH_DIRSEPCHAR '/'
+#endif
+
 /* General stuff */
 #if CENV_SYS_MAC
     extern int errno;	/* This should come from an ANSI <errno.h> file */
@@ -58,7 +119,7 @@ extern char *os_strerror(int);
 
 /* General I/O facilities */
 #include <stdio.h>
-#if CENV_SYS_UNIX
+#if CENV_SYS_UNIX && !CENV_SYS_EMSCRIPTEN
 #  include <fcntl.h>	/* For open() */
 #  include <errno.h>
 #  include <sys/file.h>	/* For L_SET */
@@ -107,7 +168,7 @@ typedef void ossighandler_t(int);
 #endif
 
 /* HAVE_SIGACTION pretty much implies the sigemptyset functions/macros */
-#if HAVE_SIGACTION
+#if HAVE_SIGACTION || defined(__EMSCRIPTEN__)
 # define ossigset_t sigset_t
 # define os_sigemptyset(set) sigemptyset(set)
 # define os_sigfillset(set)  sigfillset(set)
@@ -199,13 +260,11 @@ extern osintf_t os_swap(osintf_t *, int);
 
 /* Real-time - osrtm_t
  */
-#if HAVE_SETITIMER && HAVE_GETTIMEOFDAY	/* timeval is a BSD artifact */
-    /* The of setitimer(2) and gettimeofday(struct timeval *, ...)
-     * are used together, and the latter implies the existence of
-     * struct timeval.
-     * Further checks will omit HAVE_GETTIMEOFDAY; if it's missing
-     * it will error out below anyway.
-     */
+#if defined(__EMSCRIPTEN__)
+   /* osrtm_t already defined above */
+#  define OS_RTM_SEC(rtm) ((rtm).tv_sec)
+#  define OS_RTM_USEC(rtm) ((rtm).tv_usec)
+#elif HAVE_SETITIMER && HAVE_GETTIMEOFDAY && !defined(__EMSCRIPTEN__)	/* timeval is a BSD artifact */
 #  include <sys/time.h>
    typedef struct timeval osrtm_t;
 #  define OS_RTM_SEC(rtm) ((rtm).tv_sec)
@@ -231,25 +290,33 @@ typedef struct {
 #endif
     ossigact_t ostmr_sigact;
 #if HAVE_SETITIMER
+#  if !defined(__EMSCRIPTEN__)
     struct itimerval ostmr_itm;
+#  else
+    /* No timer struct needed for Emscripten */
+#  endif
 #elif CENV_SYS_MAC
     /* XXX: Mac implem uses static interval_timer* timer instead of a
     ** field here, fix later.
     */
 #else
-# error ostmr_itm not implemented
+    /* No timer struct needed */
 #endif    
 } ostimer_t;
 
 /* Sleep time - osstm_t
  */
 #if HAVE_NANOSLEEP
+# if !defined(__EMSCRIPTEN__)
 typedef struct timespec osstm_t;
 # define OS_STM_SEC(stm)  ((stm).tv_sec)
 # define OS_STM_USEC(stm) ((stm).tv_nsec/1000)
 # define OS_STM_SET(stm, sec) (((stm).tv_sec = sec), ((stm).tv_nsec = 0))
 # define OS_STM_MSET(stm, ms) (((stm).tv_sec = (ms/1000)),\
 			((stm).tv_nsec = (ms%1000)*1000000))
+# else
+   /* Already defined osstm_t above for Emscripten */
+# endif
 #else	/* Otherwise assume 1-msec granularity */
 typedef long osstm_t;
 # define OS_STM_SEC(stm)  ((stm)/1000)
@@ -283,7 +350,7 @@ extern unsigned long os_rtm_to_usecs(osrtm_t rtm);
 #endif
 
 /* Process priority facilities */
-#if CENV_SYS_UNIX
+#if CENV_SYS_UNIX && !CENV_SYS_EMSCRIPTEN
 #  include <sys/resource.h>
 #endif
 
@@ -293,10 +360,11 @@ extern int os_getpriority(ospri_t *);	/* Get process priority */
 
 
 /* Memory Mapping facilities */
-#if CENV_SYS_UNIX
+#if CENV_SYS_UNIX && !CENV_SYS_EMSCRIPTEN
 #  include <sys/types.h>
 #  include <sys/ipc.h>
 #  include <sys/shm.h>
+#  include <sys/mman.h>
 #endif
 
 typedef int osmm_t;

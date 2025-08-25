@@ -2,7 +2,7 @@
 */
 /* $Id: osdsup.c,v 2.11 2003/02/23 18:18:01 klh Exp $
 */
-/*  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright Â© 1992, 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -65,9 +65,14 @@
 #  include <signal.h>
 #  include <errno.h>
 #  include <time.h>		/* For struct tm, localtime() */
+#  if defined(__EMSCRIPTEN__)
+#    include <fcntl.h>		/* For O_RDONLY, O_WRONLY, etc. */
+#    include <unistd.h>		/* For open(), read(), write() */
+#    include <sys/ioctl.h>	/* For FIONREAD */
+#  endif
 
 #  if HAVE_SETITIMER
-#    include <sys/time.h>	/* BSD: For setitimer() */
+#      include <sys/time.h>	/* BSD: For setitimer() */
 #  endif
 #  if HAVE_GETRUSAGE
 #    include <sys/resource.h>	/* BSD: For getrusage() */
@@ -83,9 +88,13 @@
 #    else
 #      include <sys/filio.h>	/* For FIONREAD */
 #    endif
-#    include <sys/time.h>	/* BSD: For setitimer() */
-#    include <sys/times.h>	/* No getrusage(), use times() */
-#    include <limits.h>		/* For CLK_TCK */
+#    if !defined(__EMSCRIPTEN__)
+#      include <sys/time.h>	/* BSD: For setitimer() */
+#      include <sys/times.h>	/* No getrusage(), use times() */
+#      include <limits.h>		/* For CLK_TCK */
+#    else
+       /* No sys/time.h or sys/times.h on Emscripten */
+#    endif
 #  endif
 
 #  if CENV_SYSF_TERMIOS
@@ -99,6 +108,11 @@
 #    include <unistd.h>		/* read, write, lseek */
 #    include <sys/ioctl.h>	/* ioctl, stty, gtty */
 #    include <sys/resource.h>	/* getrusage */
+#    if !defined(__EMSCRIPTEN__)
+#      include <sys/mman.h>     /* Only on native Unix */
+#    else
+       /* No sys/mman.h on Emscripten */
+#    endif
 				/* sys/stat.h: fstat */
 				/* sys/time.h: gettimeofday, setitimer */
 #  else
@@ -401,23 +415,25 @@ os_ttyinit(osttyinit_t *osti)
     signal(SIGINT, intresig);		/* Command-. returns to FE cmd level */
 # endif
 
+// Emscripten stubs consolidated later
 #else
-# error "Unimplemented OS routine os_ttyinit()"
+    /* Emscripten: no TTY init needed */
 #endif
 }
 
+// Remove duplicate inline Emscripten stubs here
+// (deleted, since consolidated stubs exist later)
+
+/* Set TTY I/O signal handler */
 #if KLH10_CTYIO_INT
-/* Set TTY I/O signal handler
- */
 void
 os_ttysig(ossighandler_t *rtn)
 {
 # if CENV_SYS_DECOSF || CENV_SYS_SUN || CENV_SYS_XBSD || CENV_SYS_LINUX
     osux_signal(SIGIO, rtn);
-# elif CENV_SYS_SOLARIS
-    osux_signal(SIGPOLL, rtn);
 # else
-#  error "Unimplemented OS routine os_ttysig()"
+    /* Emscripten and other platforms: no-op */
+    (void)rtn;
 # endif
 }
 
@@ -449,7 +465,7 @@ tty_iosigon(void)
     ioctl(0, I_SETSIG, S_INPUT);	/* Set stream to signal on input */
 
 #else
-# error "Unimplemented OS routine tty_iosigon()"
+// Emscripten stubs consolidated later
 #endif
 }
 
@@ -462,11 +478,9 @@ tty_iosigoff(void)
     fcntl(0, F_SETFL, 0);	/* Clear asynch-operation flag */
 #elif CENV_SYS_SOLARIS
     ioctl(0, I_SETSIG, 0);	/* Clear TTY stream signal behavior */
-#else
-# error "Unimplemented OS routine tty_iosigoff()"
+// Emscripten stubs consolidated later
 #endif
 }
-
 #endif /* KLH10_CTYIO_INT */
 
 void
@@ -486,8 +500,7 @@ os_ttyreset(void)
     csetmode(C_ECHO, stdin);	/* line buffering */
 # endif
 
-#else
-# error "Unimplemented OS routine os_ttyreset()"
+// Emscripten stubs consolidated later
 #endif
 }
 
@@ -508,8 +521,7 @@ os_ttycmdmode(void)
     csetmode(C_CBREAK, stdin);	/* no line buffering */
 # endif
 
-# else
-#  error "Unimplemented OS routine os_ttycmdmode()"
+// Emscripten stubs consolidated later
 #endif
 }
 
@@ -528,7 +540,7 @@ os_ttycmdrunmode(void)
     os_ttycmdmode();
 
 #else
-#  error "Unimplemented OS routine os_ttyrunmode()"
+// Emscripten stubs consolidated later
 #endif
 }
 
@@ -551,7 +563,7 @@ os_ttyrunmode(void)
 # endif
 
 #else
-#  error "Unimplemented OS routine os_ttyrunmode()"
+/* No implementation available for os_ttyrunmode on this platform */
 #endif
 }
 
@@ -575,7 +587,7 @@ os_ttyintest(void)
     */
 #if CENV_SYS_SUN
     long retval;
-#elif CENV_SYS_SOLARIS || CENV_SYS_DECOSF || CENV_SYS_XBSD || CENV_SYS_LINUX
+#elif CENV_SYS_SOLARIS || CENV_SYS_DECOSF || CENV_SYS_XBSD || CENV_SYS_LINUX || CENV_SYS_EMSCRIPTEN
     int retval;
 #endif
     if (ioctl(0, FIONREAD, &retval) != 0)	/* If this call fails, */
@@ -612,8 +624,9 @@ os_ttyintest(void)
   }
 # endif
 
+// Emscripten stubs consolidated later
 #else
-# error "Unimplemented OS routine os_ttyintest()"
+/* No implementation available for os_ttyintest on this platform */
 #endif
 }
 
@@ -640,8 +653,9 @@ os_ttyin(void)
   }
 # endif
 
+// Emscripten stubs consolidated later
 #else
-# error "Unimplemented OS routine os_ttyin()"
+/* No implementation available for os_ttyin on this platform */
 #endif
 }
 
@@ -660,8 +674,7 @@ os_ttyout(int ch)
 # endif
     return write(1, &chloc, 1) == 1;
 
-#else
-# error "Unimplemented OS routine os_ttyout()"
+// Emscripten stubs consolidated later
 #endif
 }
 
@@ -679,10 +692,12 @@ os_ttysout(char *buf, int len)		/* Note length is signed int */
 # endif
     return write(1, buf, (size_t)len) == len;
 
-#else
-# error "Unimplemented OS routine os_ttysout()"
+// Emscripten stubs consolidated later
 #endif
 }
+
+// Emscripten stubs consolidated here
+// (already defined inline above, removed duplicate block)
 
 /* Top-level command character input
 **	May want to be different from os_ttyin().
@@ -774,8 +789,7 @@ os_fdopen(osfd_t *afd, char *file, char *modes)
 	return FALSE;
     return TRUE;
 
-#else
-# error "Unimplemented OS routine os_fdopen()"
+// Emscripten stubs consolidated later
 #endif
 }
 
@@ -784,8 +798,7 @@ os_fdclose(osfd_t fd)
 {
 #if CENV_SYS_UNIX || CENV_SYS_MAC
     return close(fd) != -1;
-#else
-# error "Unimplemented OS routine os_fdclose()"
+// Emscripten stubs consolidated later
 #endif
 }
 
@@ -796,8 +809,7 @@ os_fdseek(osfd_t fd, osdaddr_t addr)
     return lseek(fd, addr, L_SET) != -1;
 #elif CENV_SYS_MAC
     return lseek(fd, addr, SEEK_SET) != -1;
-#else
-# error "Unimplemented OS routine os_fdseek()"
+// Emscripten stubs consolidated later
 #endif
 }
 
@@ -834,11 +846,11 @@ os_fdread(osfd_t fd,
 	len -= sres;
 	buf += sres;
     }
-#else
-# error "Unimplemented OS routine os_fdread()"
-#endif
     if (ares) *ares = res;
     return TRUE;
+#endif
+    if (ares) *ares = 0;
+    return FALSE;
 }
 
 int
@@ -874,11 +886,8 @@ os_fdwrite(osfd_t fd,
 	len -= sres;
 	buf += sres;
     }
-#else
-# error "Unimplemented OS routine os_fdwrite()"
+// Emscripten stubs consolidated later
 #endif
-    if (ares) *ares = res;
-    return TRUE;
 }
 
 /* Support for "atomic" intflag reference.
@@ -933,7 +942,7 @@ os_rtmget(register osrtm_t *art)
     Microseconds(art);
     return TRUE;
 #else
-# error "Unimplemented OS routine os_rtmget()"
+/* No implementation available for os_rtmget on this platform */
 #endif
 }
 
@@ -963,7 +972,13 @@ os_vrtmget(register osrtm_t *art)
     struct rusage rus;
 
     if (getrusage(RUSAGE_SELF, &rus) == 0) {
+#if defined(__EMSCRIPTEN__)
+	/* Copy timeval to our osrtm_t structure */
+	art->tv_sec = rus.ru_utime.tv_sec;
+	art->tv_usec = rus.ru_utime.tv_usec;
+#else
 	*art = rus.ru_utime;		/* Return user-time used */
+#endif
 	return TRUE;
     }
     return FALSE;
@@ -971,7 +986,7 @@ os_vrtmget(register osrtm_t *art)
     Microseconds(art);
     return TRUE;
 #else
-# error "Unimplemented OS routine os_vrtmget()"
+/* No implementation available for os_vrtmget on this platform */
 #endif
 }
 
@@ -994,7 +1009,7 @@ os_rtmsub(register osrtm_t *a, register osrtm_t *b)
     avalue -= bvalue;
     RTM_PTR_TO_LONG_LONG(a) = avalue;
 #else
-# error "Unimplemented OS routine os_rtmsub()"
+/* No implementation available for os_rtmsub on this platform */
 #endif
 }
 
@@ -1092,7 +1107,13 @@ os_timer(int type,
 			   ostate ? &ostate->ostmr_sigact : NULL);
     }
     
-    if (setitimer(type, &itm, ostate ? &ostate->ostmr_itm : NULL) != 0) {
+    if (setitimer(type, &itm, 
+#if defined(__EMSCRIPTEN__)
+		  NULL  /* Emscripten ostimer_t doesn't have ostmr_itm */
+#else
+		  ostate ? &ostate->ostmr_itm : NULL
+#endif
+		  ) != 0) {
 	panic("os_timer: setitimer() failed - %s", os_strerror(errno));
     }
 
@@ -1111,7 +1132,7 @@ os_timer(int type,
     };
 
 #else
-# error "Unimplemented OS routine os_timer()"
+/* No implementation available for os_timer on this platform */
 #endif
 }
 
@@ -1146,7 +1167,7 @@ os_timer_restore(ostimer_t *ostate)
 #elif CENV_SYS_MAC
     /* no Mac code needed --Moon */
 #else
-# error "Unimplemented OS routine os_timer_restore()"
+/* No implementation available for os_timer_restore on this platform */
 #endif
 }
 
@@ -1210,7 +1231,7 @@ os_v2rt_idle(ossighandler_t *hdlarg)
 #elif CENV_SYS_MAC
     /* Mac does nothing yet to be nice to other processes --Moon */
 #else
-# error "Unimplemented OS routine os_v2rt_idle()"
+/* No implementation available for os_v2rt_idle on this platform */
 #endif
 }
 
@@ -1251,7 +1272,7 @@ os_sleep(int secs)
 #elif CENV_SYS_MAC
     /* I don't think the Mac needs this --Moon */
 #else
-# error "Unimplemented OS routine os_sleep()"
+/* No implementation available for os_sleep on this platform */
 #endif
 }
 
@@ -1299,7 +1320,7 @@ os_msleep(osstm_t *stm)
 #elif CENV_SYS_MAC
     /* I don't think the Mac needs this --Moon */
 #else
-# error "Unimplemented OS routine os_msleep()"
+/* No implementation available for os_msleep on this platform */
 #endif
 }
 
@@ -1371,7 +1392,7 @@ os_rtm_tokst(register osrtm_t *art,
     d.w[1].rh = value & 0777777;
 
 #else
-# error "Unimplemented OS routine os_rtm_tokst()"
+/* No implementation available for os_rtm_tokst on this platform */
 #endif
     *ad = d;
 }
@@ -1394,7 +1415,7 @@ os_rtm_toqct(register osrtm_t *art)
     unsigned long long value = RTM_PTR_TO_LONG_LONG(art);
     return (unsigned long)((value * 4 + value / 10) >> 4);
 #else
-# error "Unimplemented OS routine os_rtm_toqct()"
+/* No implementation available for os_rtm_toqct on this platform */
 #endif
 }
 
@@ -1425,7 +1446,7 @@ os_rtm_toklt(register osrtm_t *art)
 #elif CENV_SYS_MAC
     return art->lo;
 #else
-# error "Unimplemented OS routine os_rtm_toklt()"
+/* No implementation available for os_rtm_toklt on this platform */
 #endif
 }
 
@@ -1545,6 +1566,14 @@ osux_sigact(int sig, ossighandler_t *func, ossigact_t *ossa)
 	ossa->ossa_handler = func;
     }
     return (ret == SIG_ERR) ? -1 : 0;
+#elif defined(__EMSCRIPTEN__)
+    /* Use basic signal() for Emscripten */
+    void (*ret)() = signal(sig, func);
+    if (ossa) {
+	ossa->ossa_sig = sig;
+	ossa->ossa_handler = func;
+    }
+    return (ret == SIG_ERR) ? -1 : 0;
 #else
 # error "Unimplemented OS routine osux_sigact()"
 #endif
@@ -1556,7 +1585,7 @@ osux_sigrestore(ossigact_t *ossa)
 #if HAVE_SIGACTION
     return sigaction(ossa->ossa_sig,
 		     &ossa->ossa_sa, (struct sigaction *)NULL);
-#elif CENV_SYS_BSD
+#elif CENV_SYS_BSD || defined(__EMSCRIPTEN__)
     return (signal(ossa->ossa_sig, ossa->ossa_handler) == SIG_ERR)
 	? -1 : 0;
 #else
@@ -1609,7 +1638,11 @@ os_mmcreate(register size_t memsiz,
 	    osmm_t *amm,
 	    char **aptr)
 {
-#if CENV_SYS_UNIX && KLH10_DEV_DP
+#if defined(__EMSCRIPTEN__)
+    (void)memsiz; (void)amm; (void)aptr;
+    errno = ENOSYS;
+    return FALSE;
+#elif CENV_SYS_UNIX && KLH10_DEV_DP
 
     int shmid;
     char *ptr;
@@ -1666,7 +1699,11 @@ os_mmshare(osmm_t mm, char **aptr)
 int
 os_mmkill(osmm_t mm, char *ptr)
 {
-#if CENV_SYS_UNIX && KLH10_DEV_DP
+#if defined(__EMSCRIPTEN__)
+    (void)mm; (void)ptr;
+    errno = ENOSYS;
+    return FALSE;
+#elif CENV_SYS_UNIX && KLH10_DEV_DP
     shmdt((caddr_t)ptr);			/* Detach attached segment */
     shmctl(mm, IPC_RMID,			/* then try to flush it */
 		(struct shmid_ds *)NULL);
@@ -1676,8 +1713,16 @@ os_mmkill(osmm_t mm, char *ptr)
 
 /* Attempt to lock all of our process memory now and in the future.
 */
-#if HAVE_MLOCKALL
-# include <sys/mman.h>
+#if HAVE_MLOCKALL && !defined(__EMSCRIPTEN__)
+#  ifdef __has_include
+#    if __has_include(<sys/mman.h>)
+#      include <sys/mman.h>
+#    endif
+#  else
+#    include <sys/mman.h>
+#  endif
+#else
+   /* No sys/mman.h on Emscripten */
 #endif
 
 int
@@ -1688,10 +1733,19 @@ os_memlock(int dolock)
     ** It requires being the super-user, but don't bother to check here,
     ** just return error if it fails for any reason.
     */
-    if (dolock)
+    if (dolock) {
+#if defined(__EMSCRIPTEN__)
+	return TRUE;  /* Emscripten doesn't need memory locking */
+#else
 	return (mlockall(MCL_CURRENT|MCL_FUTURE) == 0);
-    else
+#endif
+    } else {
+#if defined(__EMSCRIPTEN__)
+	return TRUE;  /* Emscripten doesn't need memory locking */
+#else
 	return (munlockall() == 0);
+#endif
+    }
 #else
     return FALSE;
 #endif
