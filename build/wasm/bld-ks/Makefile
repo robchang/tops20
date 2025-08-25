@@ -1,6 +1,6 @@
 # KLH10 Makefile for unknown-emscripten on wasm32
 #
-#  Copyright © 2016 Olaf 'Rhialto' Seibert
+#  Copyright ï¿½ 2016 Olaf 'Rhialto' Seibert
 #  All Rights Reserved
 #
 #  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -23,7 +23,7 @@ CPPFLAGS =  -I$(BLDSRC) -I$(SRC)
 CFLAGS_LINT = -ansi -pedantic -Wall -Wshadow \
                 -Wstrict-prototypes -Wmissing-prototypes \
                 -Wmissing-declarations -Wredundant-decls
-LDFLAGS = 
+LDFLAGS = -sINITIAL_MEMORY=67108864 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=2097152 -sEXPORTED_RUNTIME_METHODS=callMain,FS
 LIBS = 
 CPULIBS =  
 NETLIBS = 
@@ -108,7 +108,7 @@ lint-ks:
 # KLH10 Makefile.
 # $Id: Makefile.mk,v 2.6 2002/03/21 09:44:05 klh Exp $
 #
-#  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+#  Copyright ï¿½ 1992, 1993, 2001 Kenneth L. Harrenstien
 #  All Rights Reserved
 #
 #  This file is part of the KLH10 Distribution.  Use, modification, and
