@@ -23,7 +23,7 @@ CPPFLAGS =  -I$(BLDSRC) -I$(SRC)
 CFLAGS_LINT = -ansi -pedantic -Wall -Wshadow \
                 -Wstrict-prototypes -Wmissing-prototypes \
                 -Wmissing-declarations -Wredundant-decls
-LDFLAGS = -sINITIAL_MEMORY=67108864 -sALLOW_MEMORY_GROWTH=1 -sALLOW_TABLE_GROWTH=1 -sSTACK_SIZE=2097152 -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=24576 -sASYNCIFY_IMPORTS=klh10_get_line -sEXPORTED_RUNTIME_METHODS=callMain,FS,addFunction,Asyncify,stringToUTF8,UTF8ToString -sEXPORTED_FUNCTIONS=_main,_klh10_set_input_callbacks,_klh10_set_mode,_klh10_add_input,_klh10_force_flush,_malloc,_free --js-library klh10_input_no_callback.js
+LDFLAGS = -sINITIAL_MEMORY=134217728 -sALLOW_MEMORY_GROWTH=0 -sALLOW_TABLE_GROWTH=1 -sSTACK_SIZE=8388608 -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=131072 -sASYNCIFY_IMPORTS=klh10_get_line -sEXPORTED_RUNTIME_METHODS=callMain,FS,addFunction,Asyncify,stringToUTF8,UTF8ToString -sEXPORTED_FUNCTIONS=_main,_klh10_set_input_callbacks,_klh10_set_mode,_klh10_add_input,_klh10_force_flush,_malloc,_free -sSAFE_HEAP=0 -sASSERTIONS=0 --js-library klh10_input_no_callback.js
 LIBS = 
 CPULIBS =  
 NETLIBS = 
@@ -49,11 +49,12 @@ CONFFLAGS_AUX = -DKLH10_I_CIRC=1
 CONFFLAGS = -DKLH10_CPU_KS=1	\
 	    -DKLH10_SYS_T20=1	\
 	    -DKLH10_EVHS_INT=1	\
-		    -DKLH10_DEV_DPTM03=1 \
-		    -DKLH10_DEV_DPRPXX=1 \
+		    -DKLH10_DEV_TM03=1 \
+		    -DKLH10_DEV_RPXX=1 \
 	    -DKLH10_MEM_SHARED=1 \
-	    $(TINTFLAGS) \
-	    $(DINTFLAGS) \
+	    -DPAG_PABITS=22 \
+	    $(TSYNCFLAGS) \
+	    $(DSYNCFLAGS) \
 	    -DKLH10_APRID_SERIALNO=4097 \
 	    -DKLH10_CLIENT=\"MyKS\"
 
@@ -259,7 +260,7 @@ CONFS = cenv.h klh10.h word10.h wfio.h fecmd.h feload.h \
 # Device Processes (DPs) built concurrently with KN10
 
 DPROCS_KL = dprpxx dptm03 dpni20
-DPROCS_KS = dprpxx dptm03
+DPROCS_KS =
 DPROCS_KSITS = dprpxx dptm03 dpimp dpchaos
 
 
@@ -289,10 +290,10 @@ TSYNCFLAGS = \
 
 # Subflags for fully OS-interrupt-driven time emulation
 #	These are best for high performance on a fast machine.
-TINTFLAGS = \
-	-DKLH10_RTIME_OSGET=1 \
-	-DKLH10_ITIME_INTRP=1 \
-	-DKLH10_QTIME_OSVIRT=1
+TSYNCFLAGS = \
+	-DKLH10_RTIME_SYNCH=1 \
+	-DKLH10_ITIME_SYNCH=1 \
+	-DKLH10_QTIME_SYNCH=1
 
 # Subflags for synchronous polling versions of certain device drivers.
 #	These are good for debugging.

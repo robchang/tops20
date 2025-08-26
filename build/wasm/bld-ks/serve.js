@@ -13,7 +13,9 @@ const mimeTypes = {
     '.js': 'application/javascript',
     '.wasm': 'application/wasm',
     '.css': 'text/css',
-    '.ico': 'image/x-icon'
+    '.ico': 'image/x-icon',
+    '.tap': 'application/octet-stream',
+    '.sav': 'application/octet-stream'
 };
 
 // Special handling for Emscripten generated files
@@ -30,7 +32,9 @@ const getContentType = (filePath) => {
 };
 
 const server = http.createServer((req, res) => {
-    let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
+    // Remove query parameters for file lookup
+    const urlPath = req.url.split('?')[0];
+    let filePath = path.join(__dirname, urlPath === '/' ? 'index.html' : urlPath);
     
     // Security: prevent directory traversal
     if (!filePath.startsWith(__dirname)) {
@@ -51,10 +55,14 @@ const server = http.createServer((req, res) => {
                 res.end('Server error: ' + error.code);
             }
         } else {
-            // Set CORS headers for WebAssembly
+            // Set CORS headers
             res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-            res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+            
+            // Only set strict CORS policies for WebAssembly files
+            if (contentType === 'application/wasm') {
+                res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+                res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+            }
             
             res.writeHead(200, { 'Content-Type': contentType });
             res.end(content);

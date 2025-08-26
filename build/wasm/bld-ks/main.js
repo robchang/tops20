@@ -139,8 +139,18 @@ class KLH10WebInterface {
             };
 
             this.worker.onerror = (error) => {
+                console.error('Worker error event:', error);
+                console.error('Worker error message:', error.message);
+                console.error('Worker error filename:', error.filename);
+                console.error('Worker error lineno:', error.lineno);
+                console.error('Worker error colno:', error.colno);
+                console.error('Worker error object:', error.error);
+                
                 this.updateStatus('Worker error', 'error');
-                this.terminal.writeln(`\x1b[31mWorker error: ${error.message}\x1b[0m`);
+                this.terminal.writeln(`\x1b[31mWorker error: ${error.message || 'undefined'}\x1b[0m`);
+                if (error.filename) {
+                    this.terminal.writeln(`\x1b[31mFile: ${error.filename}:${error.lineno}:${error.colno}\x1b[0m`);
+                }
             };
 
             // Start the emulator

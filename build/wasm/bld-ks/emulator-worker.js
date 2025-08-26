@@ -1,4 +1,6 @@
 // Web Worker for KLH10 PDP-10 Emulator
+console.log('Worker script loaded successfully');
+
 class EmulatorWorker {
     constructor() {
         this.Module = null;
@@ -12,6 +14,7 @@ class EmulatorWorker {
 
     async initialize() {
         return new Promise((resolve, reject) => {
+            console.log('Worker: Starting initialization...');
             try {
                 // Configure Module before importing Emscripten script
                 // Let Emscripten use its compiled memory settings
@@ -43,7 +46,7 @@ class EmulatorWorker {
                     },
                     
                     // Handle module ready
-                    onRuntimeInitialized: () => {
+                    onRuntimeInitialized: async () => {
                         this.Module = self.Module;
                         
                         // Create empty config file in virtual file system
@@ -54,22 +57,49 @@ class EmulatorWorker {
                             // Create config file with same name as program (KLH10 default behavior)
                             this.Module.FS.writeFile('/kn10-ks', configContent);
                             
+                            // Preload tape file if it exists
+                            try {
+                                const tapeUrl = '/bb-d867e-bm.tap';
+                                console.log('Attempting to preload tape:', tapeUrl);
+                                
+                                // Fetch the tape file
+                                const response = await fetch(tapeUrl);
+                                if (response.ok) {
+                                    const arrayBuffer = await response.arrayBuffer();
+                                    const uint8Array = new Uint8Array(arrayBuffer);
+                                    
+                                    // Write to the virtual filesystem
+                                    this.Module.FS.writeFile('bb-d867e-bm.tap', uint8Array);
+                                    console.log('Tape file loaded successfully:', uint8Array.length, 'bytes');
+                                } else {
+                                    console.warn('Could not fetch tape file:', response.status);
+                                }
+                            } catch (e) {
+                                console.warn('Error preloading tape:', e);
+                            }
+                            
+                            // Preload bootstrap files if they exist
+                            const bootFiles = ['smboot-k.sav', 'smmtbt-k.sav'];
+                            for (const bootFile of bootFiles) {
+                                try {
+                                    const response = await fetch('/' + bootFile);
+                                    if (response.ok) {
+                                        const arrayBuffer = await response.arrayBuffer();
+                                        const uint8Array = new Uint8Array(arrayBuffer);
+                                        this.Module.FS.writeFile(bootFile, uint8Array);
+                                        console.log('Bootstrap file loaded:', bootFile, uint8Array.length, 'bytes');
+                                    }
+                                } catch (e) {
+                                    // Ignore if bootstrap files don't exist
+                                }
+                            }
+                            
                             // List all files in the virtual filesystem for debugging
                             try {
                                 var files = this.Module.FS.readdir('/');
-                                
-                                // Check if kn10-ks.ini exists
-                                try {
-                                    var iniContent = this.Module.FS.readFile('/kn10-ks.ini', { encoding: 'utf8' });
-                                } catch (e) {
-                                }
-                                
-                                // Check our created config file
-                                try {
-                                    var configCheck = this.Module.FS.readFile('/kn10-ks', { encoding: 'utf8' });
-                                } catch (e) {
-                                }
+                                console.log('Files in virtual filesystem:', files);
                             } catch (e) {
+                                console.warn('Could not list files:', e);
                             }
                         } catch (err) {
                             console.warn('Could not create config file:', err);
@@ -105,11 +135,14 @@ class EmulatorWorker {
                 };
 
                 // Import the Emscripten-generated JavaScript (use new filename to bypass cache)
-                importScripts('kn10-ks-FIXED.js');
+                console.log('Worker: About to import kn10-ks.js...');
+                importScripts('kn10-ks.js');
+                console.log('Worker: Successfully imported kn10-ks.js');
                 
             } catch (error) {
                 console.error('Failed to load Emscripten script:', error);
-                this.sendMessage('error', `Failed to load emulator: ${error.message}`);
+                console.error('Error stack:', error.stack);
+                this.sendMessage('error', `Failed to load emulator: ${error.message} | Stack: ${error.stack}`);
                 reject(error);
             }
         });
@@ -255,10 +288,13 @@ class EmulatorWorker {
 }
 
 // Create worker instance
+console.log('Creating EmulatorWorker instance...');
 const worker = new EmulatorWorker();
+console.log('EmulatorWorker instance created');
 
 // Handle messages from main thread
 self.onmessage = async (event) => {
+    console.log('Worker received message:', event.data);
     const { type, data } = event.data;
     
     switch (type) {

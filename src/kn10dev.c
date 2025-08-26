@@ -2,7 +2,7 @@
 */
 /* $Id: kn10dev.c,v 2.4 2001/11/10 21:28:59 klh Exp $
 */
-/*  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright ï¿½ 1992, 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -43,6 +43,10 @@
 
 #if KLH10_CPU_KS && KLH10_DEV_TM03
 # include "dvtm03.h"	/* For setting up FECOM_BOOTP with magtape params */
+#endif
+
+#if KLH10_EVHS_INT && KLH10_DEV_DP
+# include "dpsup.h"	/* For dp_xstest and dp_dpxto */
 #endif
 
 #ifdef RCSID
@@ -1925,8 +1929,10 @@ dev_dpwaiting(void)
 	       its comm area says "cannot send".  Keep going in case
 	       we later find a device waiting to be processed as above.
 	    */
+#if KLH10_DEV_DP
 	    if (!dp_xstest(dp_dpxto(evr->dver_d->dv_dpp)))
 		++cnt;
+#endif
 	}
     }
     return cnt;
