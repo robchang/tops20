@@ -5,6 +5,7 @@ class KLH10WebInterface {
         this.fitAddon = null;
         this.worker = null;
         this.emulatorReady = false;
+        this.inRuncmdMode = true;   // KLH10 starts in command mode by default
         
         this.initializeTerminal();
         this.setupEventListeners();
@@ -41,6 +42,22 @@ class KLH10WebInterface {
         // Handle terminal input
         this.terminal.onData((data) => {
             if (this.worker && this.emulatorReady) {
+                // Echo input in RUNCMD mode for visibility
+                console.log('Input received:', JSON.stringify(data), 'inRuncmdMode:', this.inRuncmdMode);
+                if (this.inRuncmdMode) {
+                    // Handle special characters
+                    if (data === '\r' || data === '\n') {
+                        this.terminal.write('\r\n');
+                    } else if (data === '\b' || data === '\x7f') {
+                        // Backspace handling
+                        this.terminal.write('\b \b');
+                    } else if (data >= ' ' && data <= '~') {
+                        // Printable characters
+                        this.terminal.write(data);
+                        console.log('Echoed character:', JSON.stringify(data));
+                    }
+                }
+                
                 this.worker.postMessage({
                     type: 'input',
                     data: data
@@ -101,6 +118,11 @@ class KLH10WebInterface {
                         
                     case 'output':
                         this.terminal.write(data);
+                        break;
+                        
+                    case 'mode_change':
+                        this.inRuncmdMode = (data === 'command');
+                        console.log(`🔄 Mode change: ${data.toUpperCase()} - ${this.inRuncmdMode ? 'enabling' : 'disabling'} input echo`);
                         break;
                         
                     case 'error':

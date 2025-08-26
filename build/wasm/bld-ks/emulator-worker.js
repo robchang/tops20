@@ -19,13 +19,26 @@ class EmulatorWorker {
                     // Capture stdout/stderr and send to main thread
                     print: (text) => {
                         // Clean up any invalid UTF-8 characters
-                        const cleanText = text.replace(/[\u00A9]/g, '(C)').replace(/\uFFFD/g, '?');
-                        this.sendOutput(cleanText + '\n');
+                        const cleanText = text.replace(/[\u00A9]/g, '(C)').replace(/\uFFFD/g, '');
+                        
+                        // If text already ends with newline, don't add another
+                        // If it's a prompt (no trailing newline), add one only if it doesn't look like a prompt
+                        if (cleanText.endsWith('\n') || cleanText.endsWith('# ') || cleanText.endsWith('> ') || cleanText.endsWith('>> ')) {
+                            this.sendOutput(cleanText);
+                        } else {
+                            this.sendOutput(cleanText + '\n');
+                        }
                     },
                     printErr: (text) => {
                         // Clean up any invalid UTF-8 characters  
-                        const cleanText = text.replace(/[\u00A9]/g, '(C)').replace(/\uFFFD/g, '?');
-                        this.sendOutput(cleanText + '\n');
+                        const cleanText = text.replace(/[\u00A9]/g, '(C)').replace(/\uFFFD/g, '');
+                        
+                        // Same logic for stderr
+                        if (cleanText.endsWith('\n') || cleanText.endsWith('# ') || cleanText.endsWith('> ') || cleanText.endsWith('>> ')) {
+                            this.sendOutput(cleanText);
+                        } else {
+                            this.sendOutput(cleanText + '\n');
+                        }
                     },
                     
                     // Handle module ready
@@ -143,6 +156,7 @@ class EmulatorWorker {
         }
 
         try {
+            console.log('📨 Input received:', JSON.stringify(data));
             // Accumulate input characters
             this.inputBuffer += data;
             
@@ -162,12 +176,23 @@ class EmulatorWorker {
                 let line = this.inputBuffer.substring(0, lineEnd);
                 this.inputBuffer = this.inputBuffer.substring(lineEnd + 1);
                 
-                // Skip empty lines from just pressing enter
-                if (line.length > 0 || this.inputWaiting) {
-                    // Add newline for KLH10 compatibility
-                    line += '\n';
-                    this.lineQueue.push(line);
-                    console.log('Queued line:', JSON.stringify(line));
+                // Always send lines, including empty ones (KLH10 needs them for prompt management)
+                // Add newline for KLH10 compatibility
+                line += '\n';
+                this.lineQueue.push(line);
+                console.log('Queued line:', JSON.stringify(line));
+                
+                // Directly add to WebAssembly input queue to bypass callback mechanism
+                if (this.Module && typeof this.Module._klh10_add_input === 'function') {
+                    // Allocate memory for the string
+                    const len = line.length + 1;
+                    const ptr = this.Module._malloc(len);
+                    this.Module.stringToUTF8(line, ptr, len);
+                    
+                    // Call direct input addition function
+                    this.Module._klh10_add_input(ptr);
+                    this.Module._free(ptr);
+                    console.log('📤 Added directly to WASM input system:', JSON.stringify(line));
                 }
             }
             
@@ -193,6 +218,13 @@ class EmulatorWorker {
         }
         
         console.log('Returning line:', JSON.stringify(line));
+        
+        // Also add to WebAssembly input queue for direct access
+        if (this.Module && this.Module.KLH10_INPUT_STATE) {
+            this.Module.KLH10_INPUT_STATE.inputQueue.push(line);
+            console.log('📤 Added to WASM input queue:', JSON.stringify(line));
+        }
+        
         return line;
     }
     
@@ -260,6 +292,10 @@ self.onmessage = async (event) => {
             
         case 'input':
             worker.handleInput(data);
+            break;
+            
+        case 'mode_change':
+            worker.sendMessage('mode_change', data);
             break;
             
         default:

@@ -4230,25 +4230,41 @@ async function createWasm() {
         return buffer;
       }
   
-      // No immediate input - enter async wait
+      // No immediate input - wait for JavaScript to provide input
       console.log('🚀 No immediate input, entering async wait...');
-      KLH10_INPUT_STATE.hasEnteredAsync = true;
       
       return Asyncify.handleSleep(function(wakeUp) {
-        console.log('😴 Entered async sleep, storing wakeUp function...');
+        console.log('😴 Entered async sleep, waiting for input...');
         
-        // Store the async operation details
+        // Store the async operation details for external fulfillment
         KLH10_INPUT_STATE.asyncWakeUpFunction = wakeUp;
         KLH10_INPUT_STATE.asyncBuffer = buffer;
         KLH10_INPUT_STATE.asyncSize = size;
         
-        // Check if we already have input available (race condition protection)
-        if (KLH10_INPUT_STATE.inputQueue.length > 0) {
-          console.log('📋 Input became available during async setup');
-          setTimeout(function() {
-            KLH10_INPUT_STATE._fulfillAsyncRequest();
-          }, 1);
-        }
+        // Check if input becomes available in queue (added by external JavaScript)
+        var checkForInput = function() {
+          if (KLH10_INPUT_STATE.inputQueue.length > 0) {
+            var line = KLH10_INPUT_STATE.inputQueue.shift();
+            console.log('📥 Got queued input during async wait:', JSON.stringify(line));
+            
+            if (line.length >= size) line = line.substring(0, size - 1);
+            stringToUTF8(line, buffer, size);
+            
+            // Clean up async state
+            KLH10_INPUT_STATE.asyncWakeUpFunction = null;
+            KLH10_INPUT_STATE.asyncBuffer = 0;
+            KLH10_INPUT_STATE.asyncSize = 0;
+            
+            console.log('✅ Waking up with queued input');
+            wakeUp(buffer);
+            return;
+          }
+          
+          // Continue checking
+          setTimeout(checkForInput, 50);
+        };
+        
+        setTimeout(checkForInput, 10);
       });
     }
 
@@ -4256,7 +4272,10 @@ async function createWasm() {
       if (!KLH10_INPUT_STATE.initialized) return 0;
       
       var available = KLH10_INPUT_STATE.inputQueue.length > 0;
-      console.log('🔍 Input available:', available ? 'YES' : 'NO', '(queue length:', KLH10_INPUT_STATE.inputQueue.length, ')');
+      // Only log when there IS input to reduce spam
+      if (available) {
+        console.log('🔍 Input available: YES (queue length:', KLH10_INPUT_STATE.inputQueue.length, ')');
+      }
       return available ? 1 : 0;
     }
 
@@ -4707,6 +4726,26 @@ async function createWasm() {
 
 
 
+  function _klh10_set_mode(mode) {
+      console.log('🔄 Mode change:', mode === 1 ? 'COMMAND' : 'RUN');
+      // Send mode change to main thread via postMessage
+      if (typeof self !== 'undefined' && self.postMessage) {
+        self.postMessage({
+          type: 'mode_change',
+          data: mode === 1 ? 'command' : 'run'
+        });
+      }
+    }
+
+  
+  function _klh10_add_input(linePtr) {
+      if (!linePtr) return;
+      
+      var line = UTF8ToString(linePtr);
+      KLH10_INPUT_STATE.inputQueue.push(line);
+      console.log('📥 Added input to queue:', JSON.stringify(line), 'Queue length now:', KLH10_INPUT_STATE.inputQueue.length);
+    }
+
   function _klh10_set_input_callbacks(hasInputFn, getLineFn) {
       var buildTime = new Date().toISOString();
       console.log('🔧 NO-CALLBACK VERSION:', buildTime, '- This is the latest no-callback approach');
@@ -4714,9 +4753,8 @@ async function createWasm() {
       KLH10_INPUT_STATE.getLineCallback = getLineFn;
       KLH10_INPUT_STATE.initialized = true;
       
-      // Start background polling to pre-populate input  
-      KLH10_INPUT_STATE._startBackgroundPolling();
-      console.log('✅ Input callbacks initialized with background polling');
+      // Background polling disabled - use on-demand input only
+      console.log('✅ Input callbacks initialized without background polling');
     }
 
   FS.createPreloadedFile = FS_createPreloadedFile;
@@ -5173,6 +5211,8 @@ unexportedSymbols.forEach(unexportedRuntimeSymbol);
 
   // End runtime exports
   // Begin JS library exports
+  Module['_klh10_set_mode'] = _klh10_set_mode;
+  Module['_klh10_add_input'] = _klh10_add_input;
   Module['_klh10_set_input_callbacks'] = _klh10_set_input_callbacks;
   // End JS library exports
 
@@ -5184,8 +5224,8 @@ function checkIncomingModuleAPI() {
 
 // Imports from the Wasm binary.
 var _malloc = Module['_malloc'] = makeInvalidEarlyAccess('_malloc');
-var _free = Module['_free'] = makeInvalidEarlyAccess('_free');
 var _fflush = makeInvalidEarlyAccess('_fflush');
+var _free = Module['_free'] = makeInvalidEarlyAccess('_free');
 var _main = Module['_main'] = makeInvalidEarlyAccess('_main');
 var _strerror = makeInvalidEarlyAccess('_strerror');
 var _emscripten_stack_get_end = makeInvalidEarlyAccess('_emscripten_stack_get_end');
@@ -5222,8 +5262,8 @@ var _asyncify_stop_rewind = makeInvalidEarlyAccess('_asyncify_stop_rewind');
 
 function assignWasmExports(wasmExports) {
   Module['_malloc'] = _malloc = createExportWrapper('malloc', 1);
-  Module['_free'] = _free = createExportWrapper('free', 1);
   _fflush = createExportWrapper('fflush', 1);
+  Module['_free'] = _free = createExportWrapper('free', 1);
   Module['_main'] = _main = createExportWrapper('__main_argc_argv', 2);
   _strerror = createExportWrapper('strerror', 1);
   _emscripten_stack_get_end = wasmExports['emscripten_stack_get_end'];

@@ -65,6 +65,27 @@ var KLH10InputNoCallback = {
     }
   },
   
+  klh10_set_mode__sig: 'vi',
+  klh10_set_mode: function(mode) {
+    console.log('🔄 Mode change:', mode === 1 ? 'COMMAND' : 'RUN');
+    // Send mode change to main thread via postMessage
+    if (typeof self !== 'undefined' && self.postMessage) {
+      self.postMessage({
+        type: 'mode_change',
+        data: mode === 1 ? 'command' : 'run'
+      });
+    }
+  },
+  
+  klh10_add_input__sig: 'vp',
+  klh10_add_input: function(linePtr) {
+    if (!linePtr) return;
+    
+    var line = UTF8ToString(linePtr);
+    KLH10_INPUT_STATE.inputQueue.push(line);
+    console.log('📥 Added input to queue:', JSON.stringify(line), 'Queue length now:', KLH10_INPUT_STATE.inputQueue.length);
+  },
+  
   klh10_set_input_callbacks__sig: 'vpp',
   klh10_set_input_callbacks: function(hasInputFn, getLineFn) {
     var buildTime = new Date().toISOString();
@@ -73,9 +94,8 @@ var KLH10InputNoCallback = {
     KLH10_INPUT_STATE.getLineCallback = getLineFn;
     KLH10_INPUT_STATE.initialized = true;
     
-    // Start background polling to pre-populate input  
-    KLH10_INPUT_STATE._startBackgroundPolling();
-    console.log('✅ Input callbacks initialized with background polling');
+    // Background polling disabled - use on-demand input only
+    console.log('✅ Input callbacks initialized without background polling');
   },
   
   
@@ -84,7 +104,10 @@ var KLH10InputNoCallback = {
     if (!KLH10_INPUT_STATE.initialized) return 0;
     
     var available = KLH10_INPUT_STATE.inputQueue.length > 0;
-    console.log('🔍 Input available:', available ? 'YES' : 'NO', '(queue length:', KLH10_INPUT_STATE.inputQueue.length, ')');
+    // Only log when there IS input to reduce spam
+    if (available) {
+      console.log('🔍 Input available: YES (queue length:', KLH10_INPUT_STATE.inputQueue.length, ')');
+    }
     return available ? 1 : 0;
   },
   
@@ -108,25 +131,41 @@ var KLH10InputNoCallback = {
       return buffer;
     }
 
-    // No immediate input - enter async wait
+    // No immediate input - wait for JavaScript to provide input
     console.log('🚀 No immediate input, entering async wait...');
-    KLH10_INPUT_STATE.hasEnteredAsync = true;
     
     return Asyncify.handleSleep(function(wakeUp) {
-      console.log('😴 Entered async sleep, storing wakeUp function...');
+      console.log('😴 Entered async sleep, waiting for input...');
       
-      // Store the async operation details
+      // Store the async operation details for external fulfillment
       KLH10_INPUT_STATE.asyncWakeUpFunction = wakeUp;
       KLH10_INPUT_STATE.asyncBuffer = buffer;
       KLH10_INPUT_STATE.asyncSize = size;
       
-      // Check if we already have input available (race condition protection)
-      if (KLH10_INPUT_STATE.inputQueue.length > 0) {
-        console.log('📋 Input became available during async setup');
-        setTimeout(function() {
-          KLH10_INPUT_STATE._fulfillAsyncRequest();
-        }, 1);
-      }
+      // Check if input becomes available in queue (added by external JavaScript)
+      var checkForInput = function() {
+        if (KLH10_INPUT_STATE.inputQueue.length > 0) {
+          var line = KLH10_INPUT_STATE.inputQueue.shift();
+          console.log('📥 Got queued input during async wait:', JSON.stringify(line));
+          
+          if (line.length >= size) line = line.substring(0, size - 1);
+          stringToUTF8(line, buffer, size);
+          
+          // Clean up async state
+          KLH10_INPUT_STATE.asyncWakeUpFunction = null;
+          KLH10_INPUT_STATE.asyncBuffer = 0;
+          KLH10_INPUT_STATE.asyncSize = 0;
+          
+          console.log('✅ Waking up with queued input');
+          wakeUp(buffer);
+          return;
+        }
+        
+        // Continue checking
+        setTimeout(checkForInput, 50);
+      };
+      
+      setTimeout(checkForInput, 10);
     });
   }
 };
