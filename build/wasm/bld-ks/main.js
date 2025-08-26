@@ -77,9 +77,11 @@ class KLH10WebInterface {
     setupEventListeners() {
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
+        const loadConfigBtn = document.getElementById('loadConfigBtn');
 
         startBtn.addEventListener('click', () => this.startEmulator());
         resetBtn.addEventListener('click', () => this.resetEmulator());
+        loadConfigBtn.addEventListener('click', () => this.loadInstallationConfig());
 
         // Enable start button
         startBtn.disabled = false;
@@ -112,6 +114,7 @@ class KLH10WebInterface {
                         this.emulatorReady = true;
                         this.updateStatus('Emulator ready', 'ready');
                         document.getElementById('resetBtn').disabled = false;
+                        document.getElementById('loadConfigBtn').disabled = false;
                         break;
                         
                     case 'output':
@@ -134,6 +137,7 @@ class KLH10WebInterface {
                         this.emulatorReady = false;
                         document.getElementById('startBtn').disabled = false;
                         document.getElementById('resetBtn').disabled = true;
+                        document.getElementById('loadConfigBtn').disabled = true;
                         break;
                 }
             };
@@ -163,6 +167,50 @@ class KLH10WebInterface {
         }
     }
 
+    loadInstallationConfig() {
+        if (!this.worker || !this.emulatorReady) {
+            this.terminal.writeln('\x1b[31mEmulator not ready. Please start the emulator first.\x1b[0m');
+            return;
+        }
+
+        this.terminal.writeln('\x1b[36mLoading TOPS-20 Installation Configuration...\x1b[0m');
+        
+        // Commands from inst-kst20.ini (excluding comments)
+        const configCommands = [
+            'devdef rh0  ub1   rh11\taddr=776700 br=6 vec=254',
+            'devdef rh1  ub3   rh11\taddr=772440 br=6 vec=224',
+            'devdef dsk0 rh0.0 rp\ttype=rp06 format=dbd9 path=T20-RP06.0-dbd9 iodly=0',
+            'devdef mta0 rh1.0 tm03\tfmtr=tm03 type=tu45',
+            'devmount mta0 bb-d867e-bm.tap fskip=2',
+            'load smmtbt-k.sav'
+        ];
+
+        // Send each command with a delay to simulate typing
+        let delay = 0;
+        configCommands.forEach((command, index) => {
+            setTimeout(() => {
+                // Send command with newline
+                this.worker.postMessage({
+                    type: 'input',
+                    data: command + '\r'
+                });
+                
+                // Show what we're sending if in command mode
+                if (this.inRuncmdMode) {
+                    this.terminal.write(command + '\r\n');
+                }
+                
+                // After all commands, show completion message
+                if (index === configCommands.length - 1) {
+                    setTimeout(() => {
+                        this.terminal.writeln('\x1b[32mConfiguration loaded! Type "go" to start the monitor.\x1b[0m');
+                    }, 100);
+                }
+            }, delay);
+            delay += 500; // 500ms delay between commands
+        });
+    }
+
     resetEmulator() {
         if (this.worker) {
             this.worker.terminate();
@@ -178,6 +226,7 @@ class KLH10WebInterface {
         this.updateStatus('Ready to start emulator', 'ready');
         document.getElementById('startBtn').disabled = false;
         document.getElementById('resetBtn').disabled = true;
+        document.getElementById('loadConfigBtn').disabled = true;
     }
 }
 
