@@ -23,7 +23,7 @@ CPPFLAGS =  -I$(BLDSRC) -I$(SRC)
 CFLAGS_LINT = -ansi -pedantic -Wall -Wshadow \
                 -Wstrict-prototypes -Wmissing-prototypes \
                 -Wmissing-declarations -Wredundant-decls
-LDFLAGS = -sINITIAL_MEMORY=67108864 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=2097152 -sEXPORTED_RUNTIME_METHODS=callMain,FS
+LDFLAGS = -sINITIAL_MEMORY=67108864 -sALLOW_MEMORY_GROWTH=1 -sALLOW_TABLE_GROWTH=1 -sSTACK_SIZE=2097152 -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=24576 -sASYNCIFY_IMPORTS=klh10_get_line -sEXPORTED_RUNTIME_METHODS=callMain,FS,addFunction,Asyncify,stringToUTF8,UTF8ToString -sEXPORTED_FUNCTIONS=_main,_klh10_set_input_callbacks,_malloc,_free --js-library klh10_input_no_callback.js
 LIBS = 
 CPULIBS =  
 NETLIBS = 
@@ -78,8 +78,11 @@ OFILES_KS = klh10.o prmstr.o fecmd.o feload.o wfio.o osdsup.o \
 	dpsup.o \
 	dvhost.o dvlites.o
 
-kn10-ks: $(OFILES_KS)
-	$(LINKER) $(LDFLAGS) $(LDOUTF) kn10-ks $(OFILES_KS) $(LIBS) $(CPULIBS)
+kn10-ks.js: $(OFILES_KS) klh10_input_c.js
+	$(LINKER) $(LDFLAGS) $(LDOUTF) kn10-ks.js $(OFILES_KS) $(LIBS) $(CPULIBS)
+
+# Keep the old target name for compatibility
+kn10-ks: kn10-ks.js
 
 base-ks-its:
 	@echo "base-ks-its is not built in this directory."

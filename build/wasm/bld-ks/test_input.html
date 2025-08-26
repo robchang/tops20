@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KLH10 Input Flow Test</title>
+</head>
+<body>
+    <h1>KLH10 Input Flow Test</h1>
+    <div id="test-output" style="white-space: pre-wrap; font-family: monospace; background: #f0f0f0; padding: 10px; margin: 10px 0;"></div>
+    <button onclick="testInputFlow()">Test Input Flow</button>
+    
+    <script>
+        function log(message) {
+            const output = document.getElementById('test-output');
+            output.textContent += new Date().toISOString() + ': ' + message + '\n';
+        }
+        
+        function testInputFlow() {
+            log('Starting input flow test...');
+            
+            // Create a worker
+            const worker = new Worker('./emulator-worker.js');
+            
+            // Set up message handling
+            worker.onmessage = function(event) {
+                const { type, data } = event.data;
+                log(`Worker message: ${type} - ${JSON.stringify(data)}`);
+                
+                if (type === 'ready') {
+                    log('Worker ready, testing input...');
+                    // Simulate typing a command
+                    setTimeout(() => {
+                        log('Sending test input: "help\\n"');
+                        worker.postMessage({ type: 'input', data: 'help\n' });
+                    }, 2000);
+                }
+                
+                if (type === 'output') {
+                    log(`Emulator output: ${data}`);
+                }
+                
+                if (type === 'error') {
+                    log(`Error: ${data}`);
+                }
+            };
+            
+            worker.onerror = function(error) {
+                log(`Worker error: ${error.message}`);
+            };
+            
+            // Start the worker
+            log('Starting worker...');
+            worker.postMessage({ type: 'start' });
+        }
+    </script>
+</body>
+</html>

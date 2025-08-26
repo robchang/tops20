@@ -587,12 +587,18 @@ os_ttyintest(void)
     */
 #if CENV_SYS_SUN
     long retval;
-#elif CENV_SYS_SOLARIS || CENV_SYS_DECOSF || CENV_SYS_XBSD || CENV_SYS_LINUX || CENV_SYS_EMSCRIPTEN
+#elif CENV_SYS_SOLARIS || CENV_SYS_DECOSF || CENV_SYS_XBSD || CENV_SYS_LINUX
     int retval;
+#elif CENV_SYS_EMSCRIPTEN
+    /* Use custom input system for WebAssembly */
+    extern int klh10_input_available(void);
+    return klh10_input_available();
 #endif
+#if !CENV_SYS_EMSCRIPTEN
     if (ioctl(0, FIONREAD, &retval) != 0)	/* If this call fails, */
 	return 0;				/* assume no input waiting */
     return (int) retval;
+#endif
   }
 #elif CENV_SYS_MAC
 # if CENV_USE_COMM_TOOLBOX
@@ -745,6 +751,10 @@ os_ttycmline(char *buffer, int size)
     buffer[i] = 0;
     return buffer;
   }
+#elif CENV_SYS_EMSCRIPTEN
+    /* Use custom input system for WebAssembly */
+    extern char *klh10_get_line(char *buffer, int size);
+    return klh10_get_line(buffer, size);
 #else
     return fgets(buffer, size, stdin);
 #endif

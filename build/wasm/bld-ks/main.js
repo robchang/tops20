@@ -84,8 +84,9 @@ class KLH10WebInterface {
             this.terminal.writeln('Starting KLH10 emulator...');
             this.terminal.writeln('');
 
-            // Create Web Worker for emulator
-            this.worker = new Worker('emulator-worker.js');
+            // Create Web Worker for emulator with cache-busting
+            const timestamp = Date.now();
+            this.worker = new Worker(`emulator-worker.js?v=${timestamp}`);
             
             // Handle messages from worker
             this.worker.onmessage = (event) => {
