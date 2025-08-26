@@ -21,6 +21,7 @@ class EmulatorWorker {
                         // Clean up any invalid UTF-8 characters
                         const cleanText = text.replace(/[\u00A9]/g, '(C)').replace(/\uFFFD/g, '');
                         
+                        
                         // If text already ends with newline, don't add another
                         // If it's a prompt (no trailing newline), add one only if it doesn't look like a prompt
                         if (cleanText.endsWith('\n') || cleanText.endsWith('# ') || cleanText.endsWith('> ') || cleanText.endsWith('>> ')) {
@@ -43,7 +44,6 @@ class EmulatorWorker {
                     
                     // Handle module ready
                     onRuntimeInitialized: () => {
-                        console.log('Emscripten runtime initialized');
                         this.Module = self.Module;
                         
                         // Create empty config file in virtual file system
@@ -53,30 +53,23 @@ class EmulatorWorker {
                         try {
                             // Create config file with same name as program (KLH10 default behavior)
                             this.Module.FS.writeFile('/kn10-ks', configContent);
-                            console.log('Created default config file in virtual FS');
                             
                             // List all files in the virtual filesystem for debugging
                             try {
                                 var files = this.Module.FS.readdir('/');
-                                console.log('Virtual FS files:', files);
                                 
                                 // Check if kn10-ks.ini exists
                                 try {
                                     var iniContent = this.Module.FS.readFile('/kn10-ks.ini', { encoding: 'utf8' });
-                                    console.log('Found kn10-ks.ini file, content:', iniContent);
                                 } catch (e) {
-                                    console.log('No kn10-ks.ini file found');
                                 }
                                 
                                 // Check our created config file
                                 try {
                                     var configCheck = this.Module.FS.readFile('/kn10-ks', { encoding: 'utf8' });
-                                    console.log('Created kn10-ks file content:', JSON.stringify(configCheck));
                                 } catch (e) {
-                                    console.log('Could not read created kn10-ks file');
                                 }
                             } catch (e) {
-                                console.log('Could not list virtual FS files:', e);
                             }
                         } catch (err) {
                             console.warn('Could not create config file:', err);
@@ -112,7 +105,6 @@ class EmulatorWorker {
                 };
 
                 // Import the Emscripten-generated JavaScript (use new filename to bypass cache)
-                console.log('Loading Emscripten module...');
                 importScripts('kn10-ks-FIXED.js');
                 
             } catch (error) {
@@ -131,7 +123,6 @@ class EmulatorWorker {
 
             this.isRunning = true;
             
-            console.log('Starting emulator main...');
             
             // Run the main function with config file argument
             // argv[0] = program name, argv[1] = config file
@@ -156,7 +147,6 @@ class EmulatorWorker {
         }
 
         try {
-            console.log('📨 Input received:', JSON.stringify(data));
             // Accumulate input characters
             this.inputBuffer += data;
             
@@ -180,7 +170,6 @@ class EmulatorWorker {
                 // Add newline for KLH10 compatibility
                 line += '\n';
                 this.lineQueue.push(line);
-                console.log('Queued line:', JSON.stringify(line));
                 
                 // Directly add to WebAssembly input queue to bypass callback mechanism
                 if (this.Module && typeof this.Module._klh10_add_input === 'function') {
@@ -192,7 +181,6 @@ class EmulatorWorker {
                     // Call direct input addition function
                     this.Module._klh10_add_input(ptr);
                     this.Module._free(ptr);
-                    console.log('📤 Added directly to WASM input system:', JSON.stringify(line));
                 }
             }
             
@@ -217,12 +205,10 @@ class EmulatorWorker {
             line = line.substring(0, maxLength - 1);
         }
         
-        console.log('Returning line:', JSON.stringify(line));
         
         // Also add to WebAssembly input queue for direct access
         if (this.Module && this.Module.KLH10_INPUT_STATE) {
             this.Module.KLH10_INPUT_STATE.inputQueue.push(line);
-            console.log('📤 Added to WASM input queue:', JSON.stringify(line));
         }
         
         return line;
@@ -236,7 +222,6 @@ class EmulatorWorker {
         // Create callback functions that the C code can call
         const hasInputCallback = this.Module.addFunction(() => {
             const result = workerInstance.hasInput();
-            console.log('hasInput called, returning:', result);
             return result ? 1 : 0;
         }, 'i');
         
@@ -255,9 +240,6 @@ class EmulatorWorker {
         // Initialize the input system with our callbacks
         if (this.Module._klh10_set_input_callbacks) {
             this.Module._klh10_set_input_callbacks(hasInputCallback, getLineCallback);
-            console.log('Input callbacks registered successfully');
-            console.log('hasInputCallback ptr:', hasInputCallback);
-            console.log('getLineCallback ptr:', getLineCallback);
         } else {
             console.warn('klh10_set_input_callbacks function not found');
         }

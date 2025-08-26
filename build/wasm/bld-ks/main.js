@@ -43,7 +43,6 @@ class KLH10WebInterface {
         this.terminal.onData((data) => {
             if (this.worker && this.emulatorReady) {
                 // Echo input in RUNCMD mode for visibility
-                console.log('Input received:', JSON.stringify(data), 'inRuncmdMode:', this.inRuncmdMode);
                 if (this.inRuncmdMode) {
                     // Handle special characters
                     if (data === '\r' || data === '\n') {
@@ -54,7 +53,6 @@ class KLH10WebInterface {
                     } else if (data >= ' ' && data <= '~') {
                         // Printable characters
                         this.terminal.write(data);
-                        console.log('Echoed character:', JSON.stringify(data));
                     }
                 }
                 

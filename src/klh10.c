@@ -2,7 +2,7 @@
 */
 /* $Id: klh10.c,v 2.9 2002/05/21 16:54:32 klh Exp $
 */
-/*  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright ï¿½ 1992, 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -496,6 +496,7 @@ fe_cmdloop(void)
 	    /* Nothing to do, start running! */
 	    if (!prompted) {
 		fputs(fe_cmprompt(cpu.fe.fe_mode), stdout);
+		fflush(stdout);  /* Ensure prompt is immediately visible */
 		prompted = TRUE;
 	    }
 	    fe_aprcont(FEMODE_CMDRUN, 0, 0, 0);	/* Resume KN10 */
@@ -948,6 +949,10 @@ cmdlsetup(struct cmd_s *cm)
 
     if (!(cm->cmd_flags & CMDF_NOPRM) && cm->cmd_prm) {
 	fputs(cm->cmd_prm, stdout);
+#if CENV_SYS_EMSCRIPTEN
+	/* Force immediate output by adding newline for Emscripten */
+	putchar('\n');
+#endif
     }
 
     fe_ctycmforce();		/* Force out any pending tty output */

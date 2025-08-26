@@ -539,6 +539,10 @@ os_ttycmdrunmode(void)
 #elif CENV_SYS_MAC
     os_ttycmdmode();
 
+#elif CENV_SYS_EMSCRIPTEN
+    /* Notify web interface that we're entering command mode */
+    extern void klh10_set_mode(int mode);
+    klh10_set_mode(1);  /* 1 = command mode */
 #else
 // Emscripten stubs consolidated later
 #endif
@@ -562,6 +566,10 @@ os_ttyrunmode(void)
     csetmode(C_RAW, stdin);	/* no line buffering */
 # endif
 
+#elif CENV_SYS_EMSCRIPTEN
+    /* Notify web interface that we're entering run mode */
+    extern void klh10_set_mode(int mode);
+    klh10_set_mode(0);  /* 0 = run mode */
 #else
 /* No implementation available for os_ttyrunmode on this platform */
 #endif
@@ -764,6 +772,11 @@ void
 os_ttycmforce(void)
 {
     fflush(stdout);
+#if CENV_SYS_EMSCRIPTEN
+    /* Force Emscripten to flush output immediately */
+    extern void klh10_force_flush(void);
+    klh10_force_flush();
+#endif
 }
 
 /* General-purpose System-level I/O.

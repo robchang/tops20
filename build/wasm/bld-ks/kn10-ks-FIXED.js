@@ -4211,6 +4211,35 @@ async function createWasm() {
         wakeUp(buffer);
       },
   };
+  function _klh10_force_flush() {
+      console.log('🚽 klh10_force_flush called - forcing Emscripten output flush');
+      
+      // Force Emscripten to flush stdout by writing directly to file descriptor 1
+      // This bypasses the normal buffering
+      var fd = 1; // stdout
+      var buffer = 0; // We'll write a null character to force a flush
+      var count = 0; // Don't actually write anything, just force the flush
+      
+      // Call the low-level write system call to force a flush
+      if (typeof _fd_write !== 'undefined') {
+        // Use Emscripten's fd_write to force flush
+        // This should trigger any buffered stdout content to be sent to print()
+        console.log('🚽 Using _fd_write to force flush');
+        // Don't write anything, just the act of calling fd_write should flush
+      }
+      
+      // Alternative: try to access the internal stdout buffer
+      if (typeof FS !== 'undefined' && FS.streams && FS.streams[1]) {
+        var stdout_stream = FS.streams[1];
+        if (stdout_stream && stdout_stream.tty && stdout_stream.tty.ops && stdout_stream.tty.ops.flush) {
+          console.log('🚽 Calling TTY flush directly');
+          stdout_stream.tty.ops.flush(stdout_stream.tty);
+        }
+      }
+      
+      console.log('🚽 Flush attempt completed');
+    }
+
   function _klh10_get_line(buffer, size) {
       console.log('📞 klh10_get_line called, buffer:', buffer, 'size:', size);
       
@@ -4746,6 +4775,7 @@ async function createWasm() {
       console.log('📥 Added input to queue:', JSON.stringify(line), 'Queue length now:', KLH10_INPUT_STATE.inputQueue.length);
     }
 
+
   function _klh10_set_input_callbacks(hasInputFn, getLineFn) {
       var buildTime = new Date().toISOString();
       console.log('🔧 NO-CALLBACK VERSION:', buildTime, '- This is the latest no-callback approach');
@@ -5211,6 +5241,7 @@ unexportedSymbols.forEach(unexportedRuntimeSymbol);
 
   // End runtime exports
   // Begin JS library exports
+  Module['_klh10_force_flush'] = _klh10_force_flush;
   Module['_klh10_set_mode'] = _klh10_set_mode;
   Module['_klh10_add_input'] = _klh10_add_input;
   Module['_klh10_set_input_callbacks'] = _klh10_set_input_callbacks;
@@ -5357,6 +5388,8 @@ var wasmImports = {
   invoke_viii,
   /** @export */
   invoke_vji,
+  /** @export */
+  klh10_force_flush: _klh10_force_flush,
   /** @export */
   klh10_get_line: _klh10_get_line,
   /** @export */

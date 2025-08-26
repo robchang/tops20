@@ -4211,30 +4211,49 @@ async function createWasm() {
         wakeUp(buffer);
       },
   };
+  function _klh10_force_flush() {
+      
+      // Force Emscripten to flush stdout by writing directly to file descriptor 1
+      // This bypasses the normal buffering
+      var fd = 1; // stdout
+      var buffer = 0; // We'll write a null character to force a flush
+      var count = 0; // Don't actually write anything, just force the flush
+      
+      // Call the low-level write system call to force a flush
+      if (typeof _fd_write !== 'undefined') {
+        // Use Emscripten's fd_write to force flush
+        // This should trigger any buffered stdout content to be sent to print()
+        // Don't write anything, just the act of calling fd_write should flush
+      }
+      
+      // Alternative: try to access the internal stdout buffer
+      if (typeof FS !== 'undefined' && FS.streams && FS.streams[1]) {
+        var stdout_stream = FS.streams[1];
+        if (stdout_stream && stdout_stream.tty && stdout_stream.tty.ops && stdout_stream.tty.ops.flush) {
+          stdout_stream.tty.ops.flush(stdout_stream.tty);
+        }
+      }
+      
+    }
+
   function _klh10_get_line(buffer, size) {
-      console.log('📞 klh10_get_line called, buffer:', buffer, 'size:', size);
       
       if (!KLH10_INPUT_STATE.initialized || !buffer || size <= 0) {
-        console.log('❌ Invalid call to klh10_get_line');
         return 0;
       }
   
       // If we have queued input, return it immediately
       if (KLH10_INPUT_STATE.inputQueue.length > 0) {
         var line = KLH10_INPUT_STATE.inputQueue.shift();
-        console.log('📥 Using queued input:', JSON.stringify(line));
         
         if (line.length >= size) line = line.substring(0, size - 1);
         stringToUTF8(line, buffer, size);
-        console.log('✅ Returned queued input successfully');
         return buffer;
       }
   
       // No immediate input - wait for JavaScript to provide input
-      console.log('🚀 No immediate input, entering async wait...');
       
       return Asyncify.handleSleep(function(wakeUp) {
-        console.log('😴 Entered async sleep, waiting for input...');
         
         // Store the async operation details for external fulfillment
         KLH10_INPUT_STATE.asyncWakeUpFunction = wakeUp;
@@ -4245,7 +4264,6 @@ async function createWasm() {
         var checkForInput = function() {
           if (KLH10_INPUT_STATE.inputQueue.length > 0) {
             var line = KLH10_INPUT_STATE.inputQueue.shift();
-            console.log('📥 Got queued input during async wait:', JSON.stringify(line));
             
             if (line.length >= size) line = line.substring(0, size - 1);
             stringToUTF8(line, buffer, size);
@@ -4255,7 +4273,6 @@ async function createWasm() {
             KLH10_INPUT_STATE.asyncBuffer = 0;
             KLH10_INPUT_STATE.asyncSize = 0;
             
-            console.log('✅ Waking up with queued input');
             wakeUp(buffer);
             return;
           }
@@ -4273,9 +4290,6 @@ async function createWasm() {
       
       var available = KLH10_INPUT_STATE.inputQueue.length > 0;
       // Only log when there IS input to reduce spam
-      if (available) {
-        console.log('🔍 Input available: YES (queue length:', KLH10_INPUT_STATE.inputQueue.length, ')');
-      }
       return available ? 1 : 0;
     }
 
@@ -4727,7 +4741,6 @@ async function createWasm() {
 
 
   function _klh10_set_mode(mode) {
-      console.log('🔄 Mode change:', mode === 1 ? 'COMMAND' : 'RUN');
       // Send mode change to main thread via postMessage
       if (typeof self !== 'undefined' && self.postMessage) {
         self.postMessage({
@@ -4743,18 +4756,16 @@ async function createWasm() {
       
       var line = UTF8ToString(linePtr);
       KLH10_INPUT_STATE.inputQueue.push(line);
-      console.log('📥 Added input to queue:', JSON.stringify(line), 'Queue length now:', KLH10_INPUT_STATE.inputQueue.length);
     }
+
 
   function _klh10_set_input_callbacks(hasInputFn, getLineFn) {
       var buildTime = new Date().toISOString();
-      console.log('🔧 NO-CALLBACK VERSION:', buildTime, '- This is the latest no-callback approach');
       KLH10_INPUT_STATE.hasInputCallback = hasInputFn;
       KLH10_INPUT_STATE.getLineCallback = getLineFn;
       KLH10_INPUT_STATE.initialized = true;
       
       // Background polling disabled - use on-demand input only
-      console.log('✅ Input callbacks initialized without background polling');
     }
 
   FS.createPreloadedFile = FS_createPreloadedFile;
@@ -5211,6 +5222,7 @@ unexportedSymbols.forEach(unexportedRuntimeSymbol);
 
   // End runtime exports
   // Begin JS library exports
+  Module['_klh10_force_flush'] = _klh10_force_flush;
   Module['_klh10_set_mode'] = _klh10_set_mode;
   Module['_klh10_add_input'] = _klh10_add_input;
   Module['_klh10_set_input_callbacks'] = _klh10_set_input_callbacks;
@@ -5357,6 +5369,8 @@ var wasmImports = {
   invoke_viii,
   /** @export */
   invoke_vji,
+  /** @export */
+  klh10_force_flush: _klh10_force_flush,
   /** @export */
   klh10_get_line: _klh10_get_line,
   /** @export */
