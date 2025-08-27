@@ -102,19 +102,22 @@ class EmulatorWorker {
         this.Module = null;
         this.isRunning = false;
         
-        // Ring buffer management - will be set from main thread
-        this.sharedBuffer = null;
-        this.ringBuffers = null;
-        this.wasmBufferPtr = null;
+        // Shared WebAssembly memory - set from main thread
+        this.wasmMemory = null;
+        this.ringBufferBase = null;
     }
 
     async initialize() {
         return new Promise((resolve, reject) => {
             console.log('Worker: Starting initialization...');
             try {
-                // Configure Module before importing Emscripten script
-                // Let Emscripten use its compiled memory settings
+                // Configure Module to use shared WebAssembly memory
+                console.log('Worker: Configuring Module with shared memory:', this.wasmMemory);
+                console.log('Worker: Shared memory buffer size:', this.wasmMemory.buffer.byteLength);
+                
                 self.Module = {
+                    // Use the shared memory passed from main thread
+                    wasmMemory: this.wasmMemory,
                     // Capture stdout/stderr and write directly to shared ring buffer
                     print: (text) => {
                         // Clean up any invalid UTF-8 characters
@@ -125,26 +128,26 @@ class EmulatorWorker {
                         
                         if (isPrompt) {
                             // Prompts should not have newlines added
-                            this.writeToSharedRingBuffer(cleanText);
+                            this.writeToWasmOutputRing(cleanText);
                         } else {
                             // Regular output needs newlines added
-                            this.writeToSharedRingBuffer(cleanText + '\n');
+                            this.writeToWasmOutputRing(cleanText + '\n');
                         }
                     },
                     printErr: (text) => {
                         // Clean up any invalid UTF-8 characters  
                         const cleanText = text.replace(/[\u00A9]/g, '(C)').replace(/\uFFFD/g, '');
                         // Add newline since Module.print() is line-based and Emscripten strips \n
-                        this.writeToSharedRingBuffer(cleanText + '\n');
+                        this.writeToWasmOutputRing(cleanText + '\n');
                     },
                     
                     // Handle module ready
                     onRuntimeInitialized: async () => {
                         this.Module = self.Module;
                         
-                        // Wait a brief moment for module to fully initialize
+                        // Set up ring buffers in WASM memory
                         setTimeout(() => {
-                            this.setupSharedBuffers();
+                            this.setupWasmRingBuffers();
                         }, 10);
                         
                         // Create empty config file in virtual file system
@@ -269,83 +272,38 @@ class EmulatorWorker {
         }
     }
 
-    setupSharedBuffers() {
-        if (!this.sharedBuffer) {
-            console.error('❌ No shared buffer provided from main thread');
+    setupWasmRingBuffers() {
+        if (!this.wasmMemory || !this.ringBufferBase) {
+            console.error('❌ No shared WASM memory or ring buffer base provided');
             return;
         }
         
-        console.log('Setting up shared buffers with buffer from main thread...');
-        console.log('Shared buffer:', this.sharedBuffer);
-        console.log('Module:', this.Module);
-        console.log('Module.HEAPU8:', this.Module.HEAPU8);
-        console.log('Module._malloc:', this.Module._malloc);
+        console.log('Worker: Setting up ring buffers in shared WASM memory');
+        console.log('Worker: WASM memory buffer:', this.wasmMemory.buffer.byteLength, 'bytes');
+        console.log('Worker: Ring buffer base offset:', this.ringBufferBase.toString(16));
         
-        // Try multiple times if HEAPU8 isn't ready yet
-        let retryCount = 0;
-        const maxRetries = 50;
-        
-        const trySetup = () => {
+        if (this.Module && this.Module._klh10_set_ring_buffer_offset) {
+            // Tell WASM where the ring buffers are located in its own memory
+            this.Module._klh10_set_ring_buffer_offset(this.ringBufferBase);
             
-            if (this.Module && this.Module.HEAPU8) {
-                // Success! Set up buffers using shared buffer directly
-                
-                // Create ring buffer manager for the shared buffer
-                this.ringBuffers = new RingBufferManager(this.sharedBuffer, 0);
-                
-                // Get the address of the SharedArrayBuffer for WASM to use directly
-                // Note: WASM will access the SharedArrayBuffer memory space directly
-                const sharedBufferView = new Uint8Array(this.sharedBuffer);
-                
-                // Tell WASM about the shared buffer - it will use this address directly
-                if (this.Module._klh10_set_shared_buffers) {
-                    // Pass the SharedArrayBuffer data pointer to WASM
-                    // WASM will operate directly on shared memory
-                    this.wasmBufferPtr = this.Module._malloc(this.sharedBuffer.byteLength);
-                    const wasmView = new Uint8Array(this.Module.HEAPU8.buffer, this.wasmBufferPtr, this.sharedBuffer.byteLength);
-                    
-                    // Initialize WASM buffer to match shared buffer structure
-                    for (let i = 0; i < this.sharedBuffer.byteLength; i++) {
-                        wasmView[i] = sharedBufferView[i];
-                    }
-                    
-                    this.Module._klh10_set_shared_buffers(this.wasmBufferPtr);
-                    
-                    // Set up global function for WASM to call for output
-                    const self = this;
-                    globalThis.writeCharToSharedBuffer = function(charCode) {
-                        if (!self.ringBuffers) return 0;
-                        const char = String.fromCharCode(charCode);
-                        return self.ringBuffers.writeOutputChar(char) ? 1 : 0;
-                    };
-                    
-                    console.log('Shared buffers initialized - WASM pointer:', this.wasmBufferPtr.toString(16));
-                } else {
-                    console.error('klh10_set_shared_buffers function not found');
-                }
-            } else {
-                // Not ready yet, try again
-                retryCount++;
-                if (retryCount < maxRetries) {
-                    setTimeout(trySetup, 20);
-                } else {
-                    console.error('Failed to initialize ring buffers - Module memory never became ready');
-                }
-            }
-        };
-        
-        trySetup();
+            // Create output ring buffer manager for JavaScript to write to
+            this.outputRingBuffer = new RingBufferManager(this.wasmMemory.buffer, this.ringBufferBase + 4112);
+            
+            console.log('Worker: Ring buffers initialized at WASM memory offset:', this.ringBufferBase.toString(16));
+        } else {
+            console.error('Worker: klh10_set_ring_buffer_offset function not found');
+        }
     }
-    
-    writeToSharedRingBuffer(text) {
-        if (!this.sharedBuffer || !this.ringBuffers) {
-            console.warn('Worker: Cannot write to shared buffer - not initialized');
+
+    writeToWasmOutputRing(text) {
+        if (!this.outputRingBuffer) {
+            console.warn('Worker: Cannot write to output ring - not initialized');
             return;
         }
         
-        // Write each character directly to shared buffer output ring
+        // Write each character directly to WASM memory output ring buffer
         for (let i = 0; i < text.length; i++) {
-            const success = this.ringBuffers.writeOutputChar(text[i]);
+            const success = this.outputRingBuffer.writeOutputChar(text[i]);
             if (!success) {
                 console.warn('Worker: Output ring buffer full, character dropped');
                 break;
@@ -367,16 +325,18 @@ console.log('EmulatorWorker instance created');
 
 // Handle messages from main thread
 self.onmessage = async (event) => {
-    const { type, data, sharedBuffer } = event.data;
+    const { type, wasmMemory, ringBufferBase } = event.data;
     
     switch (type) {
         case 'start':
-            console.log('Worker: Starting emulator with shared buffer...');
-            if (sharedBuffer) {
-                worker.sharedBuffer = sharedBuffer;
-                console.log('Worker: Received shared buffer:', sharedBuffer.byteLength, 'bytes');
+            console.log('Worker: Starting emulator with shared WASM memory...');
+            if (wasmMemory) {
+                worker.wasmMemory = wasmMemory;
+                worker.ringBufferBase = ringBufferBase;
+                console.log('Worker: Received shared WASM memory:', wasmMemory.buffer.byteLength, 'bytes');
+                console.log('Worker: Ring buffer base:', ringBufferBase.toString(16));
             } else {
-                console.warn('Worker: No shared buffer provided, falling back to message passing');
+                console.error('Worker: No shared WASM memory provided!');
             }
             try {
                 await worker.initialize();

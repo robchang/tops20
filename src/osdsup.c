@@ -51,13 +51,15 @@
 
 #if CENV_SYS_EMSCRIPTEN
 #include <emscripten.h>
+#include <emscripten/heap.h>
 
 /* Ring buffer structure for WebAssembly <-> JavaScript communication */
 struct klh10_ring_buffer {
-    volatile uint32_t write_pos;
-    volatile uint32_t read_pos;
-    volatile uint32_t size;
-    volatile uint8_t data[4096];
+    volatile uint32_t write_pos;     /* Write position index */
+    volatile uint32_t read_pos;      /* Read position index */
+    volatile uint32_t size;          /* Buffer size (always 4096) */
+    volatile uint32_t padding;       /* Padding for alignment with JavaScript layout */
+    volatile uint8_t data[4096];     /* Actual ring buffer data */
 };
 
 struct klh10_shared_buffers {
@@ -72,9 +74,19 @@ static struct klh10_shared_buffers *shared_buffers = NULL;
 
 /* Ring buffer helper functions */
 static int ring_buffer_init(struct klh10_ring_buffer *rb) {
+    EM_ASM({
+        console.log('[DEBUG WASM] ring_buffer_init: BEFORE init - write_pos=' + $0 + ', read_pos=' + $1);
+    }, rb->write_pos, rb->read_pos);
+    
     rb->write_pos = 0;
     rb->read_pos = 0; 
     rb->size = 4096;
+    rb->padding = 0;  // Initialize padding field
+    
+    EM_ASM({
+        console.log('[DEBUG WASM] ring_buffer_init: AFTER init - write_pos=' + $0 + ', read_pos=' + $1 + ', size=' + $2);
+    }, rb->write_pos, rb->read_pos, rb->size);
+    
     return 1;
 }
 
@@ -89,13 +101,39 @@ static int ring_buffer_available_space(struct klh10_ring_buffer *rb) {
 }
 
 static int ring_buffer_available_data(struct klh10_ring_buffer *rb) {
-    uint32_t write_pos = rb->write_pos;
-    uint32_t read_pos = rb->read_pos;
-    if (write_pos >= read_pos) {
-        return write_pos - read_pos;
-    } else {
-        return rb->size - (read_pos - write_pos);
-    }
+    /* Use shared WASM memory exactly like the working JavaScript output code */
+    int available = EM_ASM_INT({
+        // Use the shared WASM memory that was passed from main thread - same as working output code
+        var sharedMemory = Module.wasmMemory;
+        if (!sharedMemory || !sharedMemory.buffer) {
+            console.error('[DEBUG WASM] No shared WASM memory available in ring_buffer_available_data');
+            return 0;
+        }
+        
+        var buffer = new Uint8Array(sharedMemory.buffer);
+        var view = new DataView(sharedMemory.buffer);
+        var baseOffset = $0;
+        
+        var write_pos = view.getUint32(baseOffset, true);      // Little endian
+        var read_pos = view.getUint32(baseOffset + 4, true);   // Little endian
+        var size = 4096;  // Fixed size
+        
+        var available;
+        if (write_pos >= read_pos) {
+            available = write_pos - read_pos;
+        } else {
+            available = size - (read_pos - write_pos);
+        }
+        
+        // Debug when we find data to verify buffer access
+        if (available > 0) {
+            console.log('[DEBUG WASM] FOUND DATA using sharedMemory.buffer! write_pos=' + write_pos + ', read_pos=' + read_pos + ', available=' + available);
+        }
+        
+        return available;
+    }, (uintptr_t)rb);
+    
+    return available;
 }
 
 static int ring_buffer_write_char(struct klh10_ring_buffer *rb, char c) {
@@ -109,21 +147,59 @@ static int ring_buffer_write_char(struct klh10_ring_buffer *rb, char c) {
 }
 
 static int ring_buffer_read_char(struct klh10_ring_buffer *rb) {
-    if (ring_buffer_available_data(rb) < 1) {
-        return -1; /* Buffer empty */
-    }
+    /* Use shared WASM memory exactly like the working JavaScript output code */
+    int result = EM_ASM_INT({
+        // Use the shared WASM memory that was passed from main thread - same as working output code
+        var sharedMemory = Module.wasmMemory;
+        if (!sharedMemory || !sharedMemory.buffer) {
+            console.error('[DEBUG WASM] No shared WASM memory available in ring_buffer_read_char');
+            return -1;
+        }
+        
+        var buffer = new Uint8Array(sharedMemory.buffer);
+        var view = new DataView(sharedMemory.buffer);
+        var baseOffset = $0;
+        var size = 4096;
+        
+        var write_pos = view.getUint32(baseOffset, true);
+        var read_pos = view.getUint32(baseOffset + 4, true);
+        
+        // Check if data available
+        var available = (write_pos >= read_pos) ? 
+            (write_pos - read_pos) : 
+            (size - (read_pos - write_pos));
+            
+        if (available < 1) {
+            return -1; // Buffer empty
+        }
+        
+        // Read character from data area (offset 16)
+        var char = buffer[baseOffset + 16 + read_pos];
+        
+        // Update read position
+        var next_read_pos = (read_pos + 1) % size;
+        view.setUint32(baseOffset + 4, next_read_pos, true);
+        
+        console.log('[DEBUG WASM] Using sharedMemory.buffer - read char ' + String.fromCharCode(char) + 
+                   ' (code ' + char + '), read_pos ' + read_pos + ' -> ' + next_read_pos);
+        
+        return char;
+    }, (uintptr_t)rb);
     
-    int c = rb->data[rb->read_pos];
-    rb->read_pos = (rb->read_pos + 1) % rb->size;
-    return c;
+    return result;
 }
 
 static int ring_buffer_has_complete_line(struct klh10_ring_buffer *rb) {
     uint32_t pos = rb->read_pos;
     int data_count = ring_buffer_available_data(rb);
     
+    /* Non-blocking scan for CR or LF */
     for (int i = 0; i < data_count; i++) {
-        if (rb->data[pos] == '\n' || rb->data[pos] == '\r') {
+        char ch = rb->data[pos];
+        if (ch == '\n' || ch == '\r') {
+            EM_ASM({
+                console.log('[DEBUG WASM] ring_buffer_has_complete_line: found line ending at pos ' + $0);
+            }, i);
             return 1;
         }
         pos = (pos + 1) % rb->size;
@@ -164,18 +240,43 @@ static int line_buffer_pos = 0;
 
 /* WebAssembly export for JavaScript to set shared buffer pointer */
 EMSCRIPTEN_KEEPALIVE
-void klh10_set_shared_buffers(struct klh10_shared_buffers *buffers) {
-    shared_buffers = buffers;
-    if (shared_buffers) {
-        ring_buffer_init(&shared_buffers->input);
-        ring_buffer_init(&shared_buffers->output);
-        shared_buffers->current_mode = 1; /* Start in RUNCMD mode */
-        shared_buffers->flush_request = 0;
-        
-        /* Initialize line buffer */
-        line_buffer_pos = 0;
-        line_buffer[0] = '\0';
-    }
+void klh10_set_ring_buffer_offset(uint32_t offset) {
+    EM_ASM({
+        console.log('[DEBUG WASM] klh10_set_ring_buffer_offset called with offset:', $0.toString(16));
+    }, offset);
+    
+    /* Ring buffers are at known locations in WASM memory */
+    /* The offset is already the correct memory address in shared WASM memory */
+    shared_buffers = (struct klh10_shared_buffers*)((char*)0 + offset);
+    
+    EM_ASM({
+        console.log('[DEBUG WASM] Setting up ring buffers in WASM memory at offset:', $0.toString(16));
+    }, offset);
+    
+    /* Initialize ONLY the size field - JavaScript doesn't set this but WASM needs it
+     * DO NOT touch write_pos/read_pos as JavaScript has already written data there */
+    EM_ASM({
+        console.log('[DEBUG WASM] Initializing ONLY size field, preserving JavaScript write_pos/read_pos');
+        console.log('[DEBUG WASM] BEFORE: write_pos=' + $0 + ', read_pos=' + $1 + ', size=' + $2);
+    }, shared_buffers->input.write_pos, shared_buffers->input.read_pos, shared_buffers->input.size);
+    
+    /* Only set the size field - preserve existing write_pos/read_pos from JavaScript */
+    shared_buffers->input.size = 4096;
+    shared_buffers->output.size = 4096;
+    
+    EM_ASM({
+        console.log('[DEBUG WASM] AFTER: write_pos=' + $0 + ', read_pos=' + $1 + ', size=' + $2);
+    }, shared_buffers->input.write_pos, shared_buffers->input.read_pos, shared_buffers->input.size);
+    shared_buffers->current_mode = 1; /* Start in RUNCMD mode */
+    shared_buffers->flush_request = 0;
+    
+    /* Initialize line buffer */
+    line_buffer_pos = 0;
+    line_buffer[0] = '\0';
+    
+    EM_ASM({
+        console.log('[DEBUG WASM] Ring buffers initialized in WASM memory. Input at offset:', ($0).toString(16));
+    }, (uint32_t)&shared_buffers->input);
 }
 
 /* WebAssembly export for mode changes - kept for compatibility */  
@@ -738,6 +839,10 @@ static int macsavchar = -1;
 int
 os_ttyintest(void)
 {
+    EM_ASM({
+        console.log('[DEBUG WASM] os_ttyintest() called');
+    });
+    
 #if CENV_SYS_UNIX
   {
     /* OSD WARNING: the FIONREAD ioctl is defined to want a "long" on SunOS
@@ -754,11 +859,19 @@ os_ttyintest(void)
     if (!shared_buffers) return 0;
     
     if (shared_buffers->current_mode == 1) {
-        /* RUNCMD mode: check for complete lines */
-        return ring_buffer_has_complete_line(&shared_buffers->input) ? 1 : 0;
+        /* RUNCMD mode: non-blocking check for complete lines */
+        int has_line = ring_buffer_has_complete_line(&shared_buffers->input);
+        EM_ASM({
+            console.log('[DEBUG WASM] os_ttyintest: mode=RUNCMD, has_complete_line=' + $0);
+        }, has_line);
+        return has_line;
     } else {
-        /* RUN mode: check for any available characters */
-        return ring_buffer_available_data(&shared_buffers->input);
+        /* RUN mode: non-blocking check for any available characters */
+        int available = ring_buffer_available_data(&shared_buffers->input);
+        EM_ASM({
+            console.log('[DEBUG WASM] os_ttyintest: mode=RUN, available=' + $0);
+        }, available);
+        return available;
     }
 #endif
 #if !CENV_SYS_EMSCRIPTEN
@@ -924,6 +1037,12 @@ os_ttycmchar(void)
 char *
 os_ttycmline(char *buffer, int size)
 {
+    EM_ASM({
+        console.log('[DEBUG WASM] ============================================');
+        console.log('[DEBUG WASM] os_ttycmline() CALLED! buffer size=' + $0);
+        console.log('[DEBUG WASM] ============================================');
+    }, size);
+
 #if CENV_SYS_MAC && CENV_USE_COMM_TOOLBOX
   {
     /*--- Add rubout processing later ---*/
@@ -958,13 +1077,19 @@ os_ttycmline(char *buffer, int size)
     }
     
     
-    /* Drain ring buffer character by character until we get CR */
+    /* Simple algorithm: drain ring buffer character by character until CR */
+    EM_ASM({
+        console.log('[DEBUG WASM] os_ttycmline: Starting to wait for input...');
+    });
+    
     while (1) {
         /* Wait for a character to be available */
-        int wait_count = 0;
+        int wait_loops = 0;
         while (ring_buffer_available_data(&shared_buffers->input) == 0) {
-            for (volatile int i = 0; i < 100000; i++); /* Brief busy wait */
-            wait_count++;
+            /* Brief busy wait - in a real implementation this would yield */
+            for (volatile int i = 0; i < 10000; i++);
+            wait_loops++;
+            /* Removed overwhelming debug output */
         }
         
         /* Get the character */
@@ -973,9 +1098,16 @@ os_ttycmline(char *buffer, int size)
             continue; /* Should not happen, but be safe */
         }
         
+        EM_ASM({
+            console.log('[DEBUG WASM] os_ttycmline: GOT CHARACTER: ' + String.fromCharCode($0) + ' (code ' + $0 + ')');
+        }, ch);
+        
         /* Handle the character */
         if (ch == '\r' || ch == '\n') {
-            /* End of line - copy to output buffer and return */
+            EM_ASM({
+                console.log('[DEBUG WASM] os_ttycmline: Found line ending, returning line: "' + UTF8ToString($0) + '"');
+            }, (uintptr_t)line_buffer);
+            /* End of line - copy line buffer to output buffer and return */
             int copy_len = (line_buffer_pos < size - 1) ? line_buffer_pos : size - 1;
             memcpy(buffer, line_buffer, copy_len);
             buffer[copy_len] = '\0';
@@ -986,7 +1118,7 @@ os_ttycmline(char *buffer, int size)
             
             return buffer;
         } else {
-            /* Accumulate character in line buffer */
+            /* Add character to line buffer */
             if (line_buffer_pos < sizeof(line_buffer) - 1) {
                 line_buffer[line_buffer_pos++] = ch;
                 line_buffer[line_buffer_pos] = '\0';

@@ -64,10 +64,10 @@ class KLH10WebInterface {
         this.emulatorReady = false;
         this.inRuncmdMode = true;   // KLH10 starts in command mode by default
         
-        // Shared memory ring buffer
-        this.sharedBufferSize = 16384; // 16KB same as worker
-        this.sharedBuffer = null;
-        this.ringBuffers = null;
+        // Shared WebAssembly memory (proper approach)
+        this.wasmMemory = null;
+        this.inputRingBuffer = null;
+        this.outputRingBuffer = null;
         
         this.initializeTerminal();
         this.setupEventListeners();
@@ -103,7 +103,7 @@ class KLH10WebInterface {
 
         // Handle terminal input
         this.terminal.onData((data) => {
-            if (this.worker && this.emulatorReady && this.ringBuffers) {
+            if (this.worker && this.emulatorReady && this.inputRingBuffer) {
                 // Echo input in RUNCMD mode for visibility
                 if (this.inRuncmdMode) {
                     // Handle special characters
@@ -118,10 +118,26 @@ class KLH10WebInterface {
                     }
                 }
                 
-                // Write directly to shared ring buffer - no postMessage needed!
+                // Write directly to WASM memory ring buffer - true zero-copy!
+                console.log(`📝 Main: Writing ${data.length} chars to WASM memory:`, JSON.stringify(data));
+                
+                // DEBUG: Show current buffer state before writing
+                const beforeWritePos = this.inputRingBuffer.view.getUint32(this.inputRingBuffer.inputOffset, true);
+                const beforeReadPos = this.inputRingBuffer.view.getUint32(this.inputRingBuffer.inputOffset + 4, true);
+                console.log(`📝 Main: BEFORE write - write_pos=${beforeWritePos}, read_pos=${beforeReadPos}`);
+                console.log(`📝 Main: Writing to memory buffer at offset 0x${this.inputRingBuffer.inputOffset.toString(16)}`);
+                console.log('📝 Main: JavaScript memory buffer object:', this.wasmMemory.buffer);
+                console.log('📝 Main: JavaScript memory buffer byteLength:', this.wasmMemory.buffer.byteLength);
+                
                 for (let i = 0; i < data.length; i++) {
                     const char = data[i];
-                    const success = this.ringBuffers.writeInputChar(char);
+                    const success = this.inputRingBuffer.writeInputChar(char);
+                    
+                    // DEBUG: Show buffer state after each character
+                    const afterWritePos = this.inputRingBuffer.view.getUint32(this.inputRingBuffer.inputOffset, true);
+                    const afterReadPos = this.inputRingBuffer.view.getUint32(this.inputRingBuffer.inputOffset + 4, true);
+                    console.log(`  📝 Main: Wrote char '${char}' (code ${char.charCodeAt(0)}) - success: ${success}, new write_pos=${afterWritePos}`);
+                    
                     if (!success) {
                         console.warn('Main: Input ring buffer full, character dropped');
                         break;
@@ -168,10 +184,25 @@ class KLH10WebInterface {
             this.terminal.writeln('Starting KLH10 emulator...');
             this.terminal.writeln('');
 
-            // Create shared memory buffer for ring buffers - HARD REQUIREMENT
-            this.sharedBuffer = new SharedArrayBuffer(this.sharedBufferSize);
-            this.ringBuffers = new RingBufferManager(this.sharedBuffer, 0);
-            console.log('Main: Created shared memory buffer:', this.sharedBufferSize, 'bytes');
+            // Create shared WebAssembly memory (proper architecture)
+            this.wasmMemory = new WebAssembly.Memory({
+                initial: 256,    // 16MB initial 
+                maximum: 512,    // 32MB maximum
+                shared: true     // CRITICAL: Shared between main thread and worker
+            });
+            
+            // Ring buffers will be at known offsets in WASM memory
+            const RING_BUFFER_BASE = 0x10000;  // 64KB offset
+            const INPUT_RING_OFFSET = RING_BUFFER_BASE;
+            const OUTPUT_RING_OFFSET = RING_BUFFER_BASE + 4112;
+            
+            // Create ring buffer managers that operate on WASM memory directly
+            this.inputRingBuffer = new RingBufferManager(this.wasmMemory.buffer, INPUT_RING_OFFSET);
+            this.outputRingBuffer = new RingBufferManager(this.wasmMemory.buffer, OUTPUT_RING_OFFSET);
+            
+            console.log('Main: Created shared WASM memory:', this.wasmMemory.buffer.byteLength, 'bytes');
+            console.log('Main: Input ring at offset:', INPUT_RING_OFFSET.toString(16));
+            console.log('Main: Output ring at offset:', OUTPUT_RING_OFFSET.toString(16));
 
             // Create Web Worker for emulator with cache-busting
             const timestamp = Date.now();
@@ -234,10 +265,11 @@ class KLH10WebInterface {
                 }
             };
 
-            // Start the emulator with shared buffer
+            // Start the emulator with shared WASM memory
             this.worker.postMessage({ 
                 type: 'start', 
-                sharedBuffer: this.sharedBuffer 
+                wasmMemory: this.wasmMemory,
+                ringBufferBase: 0x10000  // Tell worker where ring buffers are located
             });
 
         } catch (error) {
@@ -248,7 +280,7 @@ class KLH10WebInterface {
     }
 
     loadInstallationConfig() {
-        if (!this.worker || !this.emulatorReady || !this.ringBuffers) {
+        if (!this.worker || !this.emulatorReady || !this.inputRingBuffer) {
             console.warn('Load config attempted but emulator not ready');
             return;
         }
@@ -269,10 +301,10 @@ class KLH10WebInterface {
         let delay = 0;
         configCommands.forEach((command, index) => {
             setTimeout(() => {
-                // Write command directly to shared ring buffer
+                // Write command directly to WASM memory ring buffer
                 const fullCommand = command + '\r';
                 for (let i = 0; i < fullCommand.length; i++) {
-                    this.ringBuffers.writeInputChar(fullCommand[i]);
+                    this.inputRingBuffer.writeInputChar(fullCommand[i]);
                 }
                 
                 // Show what we're sending if in command mode
@@ -299,11 +331,11 @@ class KLH10WebInterface {
     }
 
     drainOutputBuffer() {
-        if (!this.ringBuffers) return;
+        if (!this.outputRingBuffer) return;
         
         let output = '';
-        while (this.ringBuffers.hasOutputData()) {
-            const char = this.ringBuffers.readOutputChar();
+        while (this.outputRingBuffer.hasOutputData()) {
+            const char = this.outputRingBuffer.readOutputChar();
             if (char) {
                 output += char;
             }
@@ -327,8 +359,9 @@ class KLH10WebInterface {
         }
         
         // Clean up shared resources
-        this.sharedBuffer = null;
-        this.ringBuffers = null;
+        this.wasmMemory = null;
+        this.inputRingBuffer = null;
+        this.outputRingBuffer = null;
         this.emulatorReady = false;
         
         this.terminal.clear();

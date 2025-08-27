@@ -2,7 +2,7 @@
 */
 /* $Id: fecmd.c,v 2.2 2002/05/21 09:43:39 klh Exp $
 */
-/*  Copyright © 2002 Kenneth L. Harrenstien
+/*  Copyright ï¿½ 2002 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -390,6 +390,10 @@ fe_ctyrunmode(void)
 int
 fe_ctyintest(void)
 {
+#ifdef __EMSCRIPTEN__
+    printf("[DEBUG WASM] fe_ctyintest() called, ttyback=%d\n", ttyback);
+#endif
+    
     if (!ttyback)
 	return os_ttyintest();
     return 0;
