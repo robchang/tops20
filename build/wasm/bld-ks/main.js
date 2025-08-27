@@ -143,6 +143,9 @@ class KLH10WebInterface {
         this.terminal.writeln('\x1b[36mKLH10 PDP-10 Emulator - WebAssembly Port\x1b[0m');
         this.terminal.writeln('Click "Start Emulator" to begin...');
         this.terminal.writeln('');
+        
+        // Focus the terminal for immediate keyboard input
+        this.terminal.focus();
     }
 
     setupEventListeners() {
@@ -211,10 +214,13 @@ class KLH10WebInterface {
                         this.updateStatus('Emulator ready', 'ready');
                         document.getElementById('resetBtn').disabled = false;
                         document.getElementById('loadConfigBtn').disabled = false;
-                        document.getElementById('bootTops20Btn').disabled = false;
+                        document.getElementById('bootTops20Btn').disabled = true; // Only enable after config loaded
                         
                         // Start polling output from shared ring buffer
                         this.startOutputPolling();
+                        
+                        // Focus terminal after emulator starts
+                        this.terminal.focus();
                         break;
                         
                     case 'mode_change':
@@ -309,12 +315,19 @@ class KLH10WebInterface {
                     this.terminal.write(command + '\r\n');
                 }
                 
-                // After all commands, show completion message
+                // After all commands, show completion message and update button states
                 if (index === configCommands.length - 1) {
                     setTimeout(() => {
-                        this.terminal.writeln('\x1b[32mConfiguration loaded! Type "go" to start the monitor.\x1b[0m');
+                        this.terminal.writeln('\x1b[32mConfiguration loaded! Ready to boot TOPS-20.\x1b[0m');
                         this.terminal.writeln('\x1b[33mBootstrap tape: mta0 (bb-d867e-bm.tap)\x1b[0m');
                         this.terminal.writeln('\x1b[33mEmacs tape: mta1 (emacs.tap)\x1b[0m');
+                        
+                        // Disable Load Config button and enable BOOT TOPS-20 button
+                        document.getElementById('loadConfigBtn').disabled = true;
+                        document.getElementById('bootTops20Btn').disabled = false;
+                        
+                        // Focus terminal after config loads
+                        this.terminal.focus();
                     }, 100);
                 }
             }, delay);
@@ -367,6 +380,9 @@ class KLH10WebInterface {
             this.terminal.writeln('\x1b[36mStarting TOPS-20 boot sequence...\x1b[0m');
             this.terminal.writeln('\x1b[33mCommands loaded from: tops20-boot-commands.txt\x1b[0m');
             
+            // Disable the boot button immediately when starting
+            document.getElementById('bootTops20Btn').disabled = true;
+            
             // Send each command with a delay
             let delay = 0;
             bootCommands.forEach((command, index) => {
@@ -396,6 +412,17 @@ class KLH10WebInterface {
                     delay += 2000; // 2 second delay for /l and /g143
                 } else {
                     delay += 1000; // 1 second delay for other commands
+                }
+                
+                // After the last command, show completion message
+                if (index === bootCommands.length - 1) {
+                    setTimeout(() => {
+                        this.terminal.writeln('\x1b[32mBOOT TOPS-20 sequence completed!\x1b[0m');
+                        this.terminal.writeln('\x1b[33mContinue interacting with TOPS-20 system manually.\x1b[0m');
+                        
+                        // Focus terminal after boot completes
+                        this.terminal.focus();
+                    }, delay + 1000);
                 }
             });
 
@@ -459,6 +486,9 @@ class KLH10WebInterface {
         document.getElementById('resetBtn').disabled = true;
         document.getElementById('loadConfigBtn').disabled = true;
         document.getElementById('bootTops20Btn').disabled = true;
+        
+        // Focus terminal after reset
+        this.terminal.focus();
     }
 }
 
