@@ -1,4 +1,61 @@
 // Main web interface for KLH10 PDP-10 Emulator
+
+// Ring Buffer Manager for shared memory communication (shared with worker)
+class RingBufferManager {
+    constructor(sharedBuffer, baseOffset = 0) {
+        this.buffer = new Uint8Array(sharedBuffer);
+        this.view = new DataView(sharedBuffer);
+        
+        // Buffer layout:
+        // Input ring buffer: offset 0, size 4112 (4096 data + 16 metadata)
+        // Output ring buffer: offset 4112, size 4112 (4096 data + 16 metadata)  
+        // Control: offset 8224, size 16 (mode + flush_request + padding)
+        
+        this.baseOffset = baseOffset;
+        this.inputOffset = baseOffset;
+        this.outputOffset = baseOffset + 4112;
+        this.controlOffset = baseOffset + 8224;
+    }
+    
+    // Input ring buffer (JavaScript writes, WASM reads)
+    writeInputChar(char) {
+        const writePos = this.view.getUint32(this.inputOffset, true);
+        const readPos = this.view.getUint32(this.inputOffset + 4, true);
+        const size = 4096;
+        
+        const nextWritePos = (writePos + 1) % size;
+        if (nextWritePos === readPos) {
+            return false; // Buffer full
+        }
+        
+        this.buffer[this.inputOffset + 16 + writePos] = char.charCodeAt(0);
+        this.view.setUint32(this.inputOffset, nextWritePos, true);
+        return true;
+    }
+    
+    // Output ring buffer (WASM writes, JavaScript reads)
+    readOutputChar() {
+        const writePos = this.view.getUint32(this.outputOffset, true);
+        const readPos = this.view.getUint32(this.outputOffset + 4, true);
+        
+        if (readPos === writePos) {
+            return null; // Buffer empty
+        }
+        
+        const char = this.buffer[this.outputOffset + 16 + readPos];
+        const nextReadPos = (readPos + 1) % 4096;
+        this.view.setUint32(this.outputOffset + 4, nextReadPos, true);
+        
+        return String.fromCharCode(char);
+    }
+    
+    hasOutputData() {
+        const writePos = this.view.getUint32(this.outputOffset, true);
+        const readPos = this.view.getUint32(this.outputOffset + 4, true);
+        return readPos !== writePos;
+    }
+}
+
 class KLH10WebInterface {
     constructor() {
         this.terminal = null;
@@ -6,6 +63,11 @@ class KLH10WebInterface {
         this.worker = null;
         this.emulatorReady = false;
         this.inRuncmdMode = true;   // KLH10 starts in command mode by default
+        
+        // Shared memory ring buffer
+        this.sharedBufferSize = 16384; // 16KB same as worker
+        this.sharedBuffer = null;
+        this.ringBuffers = null;
         
         this.initializeTerminal();
         this.setupEventListeners();
@@ -41,7 +103,7 @@ class KLH10WebInterface {
 
         // Handle terminal input
         this.terminal.onData((data) => {
-            if (this.worker && this.emulatorReady) {
+            if (this.worker && this.emulatorReady && this.ringBuffers) {
                 // Echo input in RUNCMD mode for visibility
                 if (this.inRuncmdMode) {
                     // Handle special characters
@@ -56,10 +118,15 @@ class KLH10WebInterface {
                     }
                 }
                 
-                this.worker.postMessage({
-                    type: 'input',
-                    data: data
-                });
+                // Write directly to shared ring buffer - no postMessage needed!
+                for (let i = 0; i < data.length; i++) {
+                    const char = data[i];
+                    const success = this.ringBuffers.writeInputChar(char);
+                    if (!success) {
+                        console.warn('Main: Input ring buffer full, character dropped');
+                        break;
+                    }
+                }
             }
         });
 
@@ -101,6 +168,11 @@ class KLH10WebInterface {
             this.terminal.writeln('Starting KLH10 emulator...');
             this.terminal.writeln('');
 
+            // Create shared memory buffer for ring buffers - HARD REQUIREMENT
+            this.sharedBuffer = new SharedArrayBuffer(this.sharedBufferSize);
+            this.ringBuffers = new RingBufferManager(this.sharedBuffer, 0);
+            console.log('Main: Created shared memory buffer:', this.sharedBufferSize, 'bytes');
+
             // Create Web Worker for emulator with cache-busting
             const timestamp = Date.now();
             this.worker = new Worker(`emulator-worker.js?v=${timestamp}`);
@@ -115,10 +187,9 @@ class KLH10WebInterface {
                         this.updateStatus('Emulator ready', 'ready');
                         document.getElementById('resetBtn').disabled = false;
                         document.getElementById('loadConfigBtn').disabled = false;
-                        break;
                         
-                    case 'output':
-                        this.terminal.write(data);
+                        // Start polling output from shared ring buffer
+                        this.startOutputPolling();
                         break;
                         
                     case 'mode_change':
@@ -128,7 +199,7 @@ class KLH10WebInterface {
                         
                     case 'error':
                         this.updateStatus(`Error: ${data}`, 'error');
-                        this.terminal.writeln(`\x1b[31mError: ${data}\x1b[0m`);
+                        console.error('Emulator error:', data);
                         break;
                         
                     case 'exit':
@@ -138,6 +209,12 @@ class KLH10WebInterface {
                         document.getElementById('startBtn').disabled = false;
                         document.getElementById('resetBtn').disabled = true;
                         document.getElementById('loadConfigBtn').disabled = true;
+                        
+                        // Stop output polling
+                        if (this.outputPollInterval) {
+                            clearInterval(this.outputPollInterval);
+                            this.outputPollInterval = null;
+                        }
                         break;
                 }
             };
@@ -151,25 +228,28 @@ class KLH10WebInterface {
                 console.error('Worker error object:', error.error);
                 
                 this.updateStatus('Worker error', 'error');
-                this.terminal.writeln(`\x1b[31mWorker error: ${error.message || 'undefined'}\x1b[0m`);
+                console.error('Worker error:', error.message || 'undefined');
                 if (error.filename) {
-                    this.terminal.writeln(`\x1b[31mFile: ${error.filename}:${error.lineno}:${error.colno}\x1b[0m`);
+                    console.error(`Worker error location: ${error.filename}:${error.lineno}:${error.colno}`);
                 }
             };
 
-            // Start the emulator
-            this.worker.postMessage({ type: 'start' });
+            // Start the emulator with shared buffer
+            this.worker.postMessage({ 
+                type: 'start', 
+                sharedBuffer: this.sharedBuffer 
+            });
 
         } catch (error) {
             this.updateStatus(`Failed to start: ${error.message}`, 'error');
-            this.terminal.writeln(`\x1b[31mFailed to start emulator: ${error.message}\x1b[0m`);
+            console.error('Failed to start emulator:', error.message);
             document.getElementById('startBtn').disabled = false;
         }
     }
 
     loadInstallationConfig() {
-        if (!this.worker || !this.emulatorReady) {
-            this.terminal.writeln('\x1b[31mEmulator not ready. Please start the emulator first.\x1b[0m');
+        if (!this.worker || !this.emulatorReady || !this.ringBuffers) {
+            console.warn('Load config attempted but emulator not ready');
             return;
         }
 
@@ -189,11 +269,11 @@ class KLH10WebInterface {
         let delay = 0;
         configCommands.forEach((command, index) => {
             setTimeout(() => {
-                // Send command with newline
-                this.worker.postMessage({
-                    type: 'input',
-                    data: command + '\r'
-                });
+                // Write command directly to shared ring buffer
+                const fullCommand = command + '\r';
+                for (let i = 0; i < fullCommand.length; i++) {
+                    this.ringBuffers.writeInputChar(fullCommand[i]);
+                }
                 
                 // Show what we're sending if in command mode
                 if (this.inRuncmdMode) {
@@ -211,13 +291,46 @@ class KLH10WebInterface {
         });
     }
 
+    startOutputPolling() {
+        // Poll output ring buffer at 60fps  
+        this.outputPollInterval = setInterval(() => {
+            this.drainOutputBuffer();
+        }, 16); // ~60fps
+    }
+
+    drainOutputBuffer() {
+        if (!this.ringBuffers) return;
+        
+        let output = '';
+        while (this.ringBuffers.hasOutputData()) {
+            const char = this.ringBuffers.readOutputChar();
+            if (char) {
+                output += char;
+            }
+        }
+        
+        if (output.length > 0) {
+            this.terminal.write(output);
+        }
+    }
+
     resetEmulator() {
         if (this.worker) {
             this.worker.terminate();
             this.worker = null;
         }
         
+        // Stop output polling
+        if (this.outputPollInterval) {
+            clearInterval(this.outputPollInterval);
+            this.outputPollInterval = null;
+        }
+        
+        // Clean up shared resources
+        this.sharedBuffer = null;
+        this.ringBuffers = null;
         this.emulatorReady = false;
+        
         this.terminal.clear();
         this.terminal.writeln('\x1b[36mKLH10 PDP-10 Emulator - WebAssembly Port\x1b[0m');
         this.terminal.writeln('Click "Start Emulator" to begin...');

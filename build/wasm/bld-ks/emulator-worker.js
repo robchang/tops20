@@ -1,15 +1,111 @@
 // Web Worker for KLH10 PDP-10 Emulator
 console.log('Worker script loaded successfully');
 
+// Ring Buffer Manager for shared memory communication
+class RingBufferManager {
+    constructor(sharedBuffer, baseOffset = 0) {
+        this.buffer = new Uint8Array(sharedBuffer);
+        this.view = new DataView(sharedBuffer);
+        
+        // Buffer layout:
+        // Input ring buffer: offset 0, size 4112 (4096 data + 16 metadata)
+        // Output ring buffer: offset 4112, size 4112 (4096 data + 16 metadata)  
+        // Control: offset 8224, size 16 (mode + flush_request + padding)
+        
+        this.baseOffset = baseOffset;
+        this.inputOffset = baseOffset;
+        this.outputOffset = baseOffset + 4112;
+        this.controlOffset = baseOffset + 8224;
+    }
+    
+    // Input ring buffer (JavaScript writes, WASM reads)
+    writeInputChar(char) {
+        const writePos = this.view.getUint32(this.inputOffset, true);
+        const readPos = this.view.getUint32(this.inputOffset + 4, true);
+        const size = 4096;
+        
+        const nextWritePos = (writePos + 1) % size;
+        if (nextWritePos === readPos) {
+            return false; // Buffer full
+        }
+        
+        this.buffer[this.inputOffset + 16 + writePos] = char.charCodeAt(0);
+        this.view.setUint32(this.inputOffset, nextWritePos, true);
+        return true;
+    }
+    
+    writeInputLine(line) {
+        // Write each character followed by newline
+        for (let i = 0; i < line.length; i++) {
+            if (!this.writeInputChar(line[i])) {
+                return false; // Buffer full
+            }
+        }
+        // Add newline to complete the line
+        return this.writeInputChar('\n');
+    }
+    
+    // Output ring buffer (WASM writes, JavaScript reads)
+    readOutputChar() {
+        const writePos = this.view.getUint32(this.outputOffset, true);
+        const readPos = this.view.getUint32(this.outputOffset + 4, true);
+        
+        if (readPos === writePos) {
+            return null; // Buffer empty
+        }
+        
+        const char = this.buffer[this.outputOffset + 16 + readPos];
+        const nextReadPos = (readPos + 1) % 4096;
+        this.view.setUint32(this.outputOffset + 4, nextReadPos, true);
+        
+        return String.fromCharCode(char);
+    }
+    
+    hasOutputData() {
+        const writePos = this.view.getUint32(this.outputOffset, true);
+        const readPos = this.view.getUint32(this.outputOffset + 4, true);
+        return readPos !== writePos;
+    }
+    
+    // Output ring buffer (WASM writes, JavaScript reads) - Worker side writing
+    writeOutputChar(char) {
+        const writePos = this.view.getUint32(this.outputOffset, true);
+        const readPos = this.view.getUint32(this.outputOffset + 4, true);
+        const size = 4096;
+        
+        const nextWritePos = (writePos + 1) % size;
+        if (nextWritePos === readPos) {
+            return false; // Buffer full
+        }
+        
+        this.buffer[this.outputOffset + 16 + writePos] = char.charCodeAt(0);
+        this.view.setUint32(this.outputOffset, nextWritePos, true);
+        return true;
+    }
+    
+    // Control functions
+    getCurrentMode() {
+        return this.view.getUint32(this.controlOffset, true);
+    }
+    
+    getFlushRequest() {
+        return this.view.getUint32(this.controlOffset + 4, true);
+    }
+    
+    clearFlushRequest() {
+        this.view.setUint32(this.controlOffset + 4, 0, true);
+    }
+}
+
 class EmulatorWorker {
     constructor() {
         this.Module = null;
         this.isRunning = false;
         
-        // Input handling for RUNCMD mode (line-based)
-        this.inputBuffer = '';      // Accumulates characters until newline
-        this.lineQueue = [];        // Complete lines ready for KLH10
-        this.inputWaiting = false;  // True if KLH10 is waiting for input
+        // Ring buffer management - will be set from main thread
+        this.sharedBuffer = null;
+        this.ringBuffers = null;
+        this.wasmBufferPtr = null;
     }
 
     async initialize() {
@@ -19,35 +115,37 @@ class EmulatorWorker {
                 // Configure Module before importing Emscripten script
                 // Let Emscripten use its compiled memory settings
                 self.Module = {
-                    // Capture stdout/stderr and send to main thread
+                    // Capture stdout/stderr and write directly to shared ring buffer
                     print: (text) => {
                         // Clean up any invalid UTF-8 characters
                         const cleanText = text.replace(/[\u00A9]/g, '(C)').replace(/\uFFFD/g, '');
                         
+                        // Check if this is a prompt (KLH10# or KLH10> or KLH10>>)
+                        const isPrompt = /^KLH10[#>]+\s*$/.test(cleanText.trim());
                         
-                        // If text already ends with newline, don't add another
-                        // If it's a prompt (no trailing newline), add one only if it doesn't look like a prompt
-                        if (cleanText.endsWith('\n') || cleanText.endsWith('# ') || cleanText.endsWith('> ') || cleanText.endsWith('>> ')) {
-                            this.sendOutput(cleanText);
+                        if (isPrompt) {
+                            // Prompts should not have newlines added
+                            this.writeToSharedRingBuffer(cleanText);
                         } else {
-                            this.sendOutput(cleanText + '\n');
+                            // Regular output needs newlines added
+                            this.writeToSharedRingBuffer(cleanText + '\n');
                         }
                     },
                     printErr: (text) => {
                         // Clean up any invalid UTF-8 characters  
                         const cleanText = text.replace(/[\u00A9]/g, '(C)').replace(/\uFFFD/g, '');
-                        
-                        // Same logic for stderr
-                        if (cleanText.endsWith('\n') || cleanText.endsWith('# ') || cleanText.endsWith('> ') || cleanText.endsWith('>> ')) {
-                            this.sendOutput(cleanText);
-                        } else {
-                            this.sendOutput(cleanText + '\n');
-                        }
+                        // Add newline since Module.print() is line-based and Emscripten strips \n
+                        this.writeToSharedRingBuffer(cleanText + '\n');
                     },
                     
                     // Handle module ready
                     onRuntimeInitialized: async () => {
                         this.Module = self.Module;
+                        
+                        // Wait a brief moment for module to fully initialize
+                        setTimeout(() => {
+                            this.setupSharedBuffers();
+                        }, 10);
                         
                         // Create empty config file in virtual file system
                         // KLH10 processes each line as a command, so we want an empty file
@@ -104,9 +202,6 @@ class EmulatorWorker {
                         } catch (err) {
                             console.warn('Could not create config file:', err);
                         }
-                        
-                        // Set up input handling hooks
-                        this.setupInputHooks();
                         
                         this.sendMessage('ready');
                         resolve();
@@ -174,116 +269,94 @@ class EmulatorWorker {
         }
     }
 
-    handleInput(data) {
-        if (!this.isRunning || !this.Module) {
+    setupSharedBuffers() {
+        if (!this.sharedBuffer) {
+            console.error('❌ No shared buffer provided from main thread');
             return;
         }
-
-        try {
-            // Accumulate input characters
-            this.inputBuffer += data;
+        
+        console.log('Setting up shared buffers with buffer from main thread...');
+        console.log('Shared buffer:', this.sharedBuffer);
+        console.log('Module:', this.Module);
+        console.log('Module.HEAPU8:', this.Module.HEAPU8);
+        console.log('Module._malloc:', this.Module._malloc);
+        
+        // Try multiple times if HEAPU8 isn't ready yet
+        let retryCount = 0;
+        const maxRetries = 50;
+        
+        const trySetup = () => {
             
-            // Process complete lines (when user presses Enter)
-            while (this.inputBuffer.includes('\n') || this.inputBuffer.includes('\r')) {
-                let newlineIndex = this.inputBuffer.indexOf('\n');
-                let crIndex = this.inputBuffer.indexOf('\r');
+            if (this.Module && this.Module.HEAPU8) {
+                // Success! Set up buffers using shared buffer directly
                 
-                // Handle both \n and \r as line terminators
-                if (newlineIndex === -1) newlineIndex = Infinity;
-                if (crIndex === -1) crIndex = Infinity;
+                // Create ring buffer manager for the shared buffer
+                this.ringBuffers = new RingBufferManager(this.sharedBuffer, 0);
                 
-                const lineEnd = Math.min(newlineIndex, crIndex);
-                if (lineEnd === Infinity) break;
+                // Get the address of the SharedArrayBuffer for WASM to use directly
+                // Note: WASM will access the SharedArrayBuffer memory space directly
+                const sharedBufferView = new Uint8Array(this.sharedBuffer);
                 
-                // Extract the line including the newline
-                let line = this.inputBuffer.substring(0, lineEnd);
-                this.inputBuffer = this.inputBuffer.substring(lineEnd + 1);
-                
-                // Always send lines, including empty ones (KLH10 needs them for prompt management)
-                // Add newline for KLH10 compatibility
-                line += '\n';
-                this.lineQueue.push(line);
-                
-                // Directly add to WebAssembly input queue to bypass callback mechanism
-                if (this.Module && typeof this.Module._klh10_add_input === 'function') {
-                    // Allocate memory for the string
-                    const len = line.length + 1;
-                    const ptr = this.Module._malloc(len);
-                    this.Module.stringToUTF8(line, ptr, len);
+                // Tell WASM about the shared buffer - it will use this address directly
+                if (this.Module._klh10_set_shared_buffers) {
+                    // Pass the SharedArrayBuffer data pointer to WASM
+                    // WASM will operate directly on shared memory
+                    this.wasmBufferPtr = this.Module._malloc(this.sharedBuffer.byteLength);
+                    const wasmView = new Uint8Array(this.Module.HEAPU8.buffer, this.wasmBufferPtr, this.sharedBuffer.byteLength);
                     
-                    // Call direct input addition function
-                    this.Module._klh10_add_input(ptr);
-                    this.Module._free(ptr);
+                    // Initialize WASM buffer to match shared buffer structure
+                    for (let i = 0; i < this.sharedBuffer.byteLength; i++) {
+                        wasmView[i] = sharedBufferView[i];
+                    }
+                    
+                    this.Module._klh10_set_shared_buffers(this.wasmBufferPtr);
+                    
+                    // Set up global function for WASM to call for output
+                    const self = this;
+                    globalThis.writeCharToSharedBuffer = function(charCode) {
+                        if (!self.ringBuffers) return 0;
+                        const char = String.fromCharCode(charCode);
+                        return self.ringBuffers.writeOutputChar(char) ? 1 : 0;
+                    };
+                    
+                    console.log('Shared buffers initialized - WASM pointer:', this.wasmBufferPtr.toString(16));
+                } else {
+                    console.error('klh10_set_shared_buffers function not found');
+                }
+            } else {
+                // Not ready yet, try again
+                retryCount++;
+                if (retryCount < maxRetries) {
+                    setTimeout(trySetup, 20);
+                } else {
+                    console.error('Failed to initialize ring buffers - Module memory never became ready');
                 }
             }
-            
-        } catch (error) {
-            this.sendMessage('error', `Input handling error: ${error.message}`);
-        }
+        };
+        
+        trySetup();
     }
     
-    // Check if input is available (called by os_ttyintest)
-    hasInput() {
-        return this.lineQueue.length > 0;
-    }
-    
-    // Get next line of input (called by os_ttycmline) 
-    getLine(maxLength) {
-        if (this.lineQueue.length === 0) {
-            return null;
+    writeToSharedRingBuffer(text) {
+        if (!this.sharedBuffer || !this.ringBuffers) {
+            console.warn('Worker: Cannot write to shared buffer - not initialized');
+            return;
         }
         
-        let line = this.lineQueue.shift();
-        if (line.length > maxLength - 1) {
-            line = line.substring(0, maxLength - 1);
-        }
-        
-        
-        // Also add to WebAssembly input queue for direct access
-        if (this.Module && this.Module.KLH10_INPUT_STATE) {
-            this.Module.KLH10_INPUT_STATE.inputQueue.push(line);
-        }
-        
-        return line;
-    }
-    
-    setupInputHooks() {
-        // Set up callbacks for our custom input library
-        const workerInstance = this;
-        const moduleRef = this.Module; // Capture Module reference for callback scope
-        
-        // Create callback functions that the C code can call
-        const hasInputCallback = this.Module.addFunction(() => {
-            const result = workerInstance.hasInput();
-            return result ? 1 : 0;
-        }, 'i');
-        
-        const getLineCallback = this.Module.addFunction((maxSize) => {
-            const line = workerInstance.getLine(maxSize);
-            if (line) {
-                // Allocate memory for the string and copy it
-                const len = line.length + 1;
-                const ptr = moduleRef._malloc(len);
-                moduleRef.stringToUTF8(line, ptr, len);
-                return ptr;
+        // Write each character directly to shared buffer output ring
+        for (let i = 0; i < text.length; i++) {
+            const success = this.ringBuffers.writeOutputChar(text[i]);
+            if (!success) {
+                console.warn('Worker: Output ring buffer full, character dropped');
+                break;
             }
-            return 0; // NULL
-        }, 'pi');
-        
-        // Initialize the input system with our callbacks
-        if (this.Module._klh10_set_input_callbacks) {
-            this.Module._klh10_set_input_callbacks(hasInputCallback, getLineCallback);
-        } else {
-            console.warn('klh10_set_input_callbacks function not found');
         }
     }
+    
+    
 
     sendMessage(type, data = null) {
         self.postMessage({ type, data });
-    }
-
-    sendOutput(text) {
-        self.postMessage({ type: 'output', data: text });
     }
 }
 
@@ -294,11 +367,17 @@ console.log('EmulatorWorker instance created');
 
 // Handle messages from main thread
 self.onmessage = async (event) => {
-    console.log('Worker received message:', event.data);
-    const { type, data } = event.data;
+    const { type, data, sharedBuffer } = event.data;
     
     switch (type) {
         case 'start':
+            console.log('Worker: Starting emulator with shared buffer...');
+            if (sharedBuffer) {
+                worker.sharedBuffer = sharedBuffer;
+                console.log('Worker: Received shared buffer:', sharedBuffer.byteLength, 'bytes');
+            } else {
+                console.warn('Worker: No shared buffer provided, falling back to message passing');
+            }
             try {
                 await worker.initialize();
                 // After successful initialization, start the emulator
@@ -306,10 +385,6 @@ self.onmessage = async (event) => {
             } catch (error) {
                 worker.sendMessage('error', `Initialization failed: ${error.message}`);
             }
-            break;
-            
-        case 'input':
-            worker.handleInput(data);
             break;
             
         case 'mode_change':

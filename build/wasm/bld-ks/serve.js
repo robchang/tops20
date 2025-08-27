@@ -55,14 +55,10 @@ const server = http.createServer((req, res) => {
                 res.end('Server error: ' + error.code);
             }
         } else {
-            // Set CORS headers
+            // Set CORS headers for SharedArrayBuffer support
             res.setHeader('Access-Control-Allow-Origin', '*');
-            
-            // Only set strict CORS policies for WebAssembly files
-            if (contentType === 'application/wasm') {
-                res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-                res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-            }
+            res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+            res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
             
             res.writeHead(200, { 'Content-Type': contentType });
             res.end(content);

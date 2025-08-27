@@ -23,7 +23,7 @@ CPPFLAGS =  -I$(BLDSRC) -I$(SRC)
 CFLAGS_LINT = -ansi -pedantic -Wall -Wshadow \
                 -Wstrict-prototypes -Wmissing-prototypes \
                 -Wmissing-declarations -Wredundant-decls
-LDFLAGS = -sINITIAL_MEMORY=134217728 -sALLOW_MEMORY_GROWTH=0 -sALLOW_TABLE_GROWTH=1 -sSTACK_SIZE=8388608 -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=131072 -sASYNCIFY_IMPORTS=klh10_get_line -sEXPORTED_RUNTIME_METHODS=callMain,FS,addFunction,Asyncify,stringToUTF8,UTF8ToString -sEXPORTED_FUNCTIONS=_main,_klh10_set_input_callbacks,_klh10_set_mode,_klh10_add_input,_klh10_force_flush,_malloc,_free -sSAFE_HEAP=0 -sASSERTIONS=0 --js-library klh10_input_no_callback.js
+LDFLAGS = -sINITIAL_MEMORY=134217728 -sALLOW_MEMORY_GROWTH=0 -sALLOW_TABLE_GROWTH=1 -sSTACK_SIZE=8388608 -sEXPORTED_RUNTIME_METHODS=callMain,FS,stringToUTF8,UTF8ToString,HEAPU8 -sEXPORTED_FUNCTIONS=_main,_malloc,_free -sSAFE_HEAP=0 -sASSERTIONS=0
 LIBS = 
 CPULIBS =  
 NETLIBS = 
