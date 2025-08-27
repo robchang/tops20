@@ -285,6 +285,8 @@ class KLH10WebInterface {
             'devdef dsk0 rh0.0 rp\ttype=rp06 format=dbd9 path=T20-RP06.0-dbd9 iodly=0',
             'devdef mta0 rh1.0 tm03\tfmtr=tm03 type=tu45',
             'devmount mta0 bb-d867e-bm.tap fskip=2',
+            'devdef mta1 rh1.1 tm03\tfmtr=tm03 type=tu45',
+            'devmount mta1 emacs.tap',
             'load smmtbt-k.sav'
         ];
 
@@ -307,6 +309,8 @@ class KLH10WebInterface {
                 if (index === configCommands.length - 1) {
                     setTimeout(() => {
                         this.terminal.writeln('\x1b[32mConfiguration loaded! Type "go" to start the monitor.\x1b[0m');
+                        this.terminal.writeln('\x1b[33mBootstrap tape: mta0 (bb-d867e-bm.tap)\x1b[0m');
+                        this.terminal.writeln('\x1b[33mEmacs tape: mta1 (emacs.tap)\x1b[0m');
                     }, 100);
                 }
             }, delay);

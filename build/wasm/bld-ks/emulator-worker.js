@@ -156,10 +156,10 @@ class EmulatorWorker {
                             // Create config file with same name as program (KLH10 default behavior)
                             this.Module.FS.writeFile('/kn10-ks', configContent);
                             
-                            // Preload tape file if it exists
+                            // Preload bootstrap tape file if it exists
                             try {
                                 const tapeUrl = '/bb-d867e-bm.tap';
-                                console.log('Attempting to preload tape:', tapeUrl);
+                                console.log('Attempting to preload bootstrap tape:', tapeUrl);
                                 
                                 // Fetch the tape file
                                 const response = await fetch(tapeUrl);
@@ -169,12 +169,33 @@ class EmulatorWorker {
                                     
                                     // Write to the virtual filesystem
                                     this.Module.FS.writeFile('bb-d867e-bm.tap', uint8Array);
-                                    console.log('Tape file loaded successfully:', uint8Array.length, 'bytes');
+                                    console.log('Bootstrap tape loaded successfully:', uint8Array.length, 'bytes');
                                 } else {
-                                    console.warn('Could not fetch tape file:', response.status);
+                                    console.warn('Could not fetch bootstrap tape file:', response.status);
                                 }
                             } catch (e) {
-                                console.warn('Error preloading tape:', e);
+                                console.warn('Error preloading bootstrap tape:', e);
+                            }
+                            
+                            // Preload Emacs tape file if it exists
+                            try {
+                                const emacsTapeUrl = '/emacs.tap';
+                                console.log('Attempting to preload Emacs tape:', emacsTapeUrl);
+                                
+                                // Fetch the Emacs tape file
+                                const emacsResponse = await fetch(emacsTapeUrl);
+                                if (emacsResponse.ok) {
+                                    const emacsArrayBuffer = await emacsResponse.arrayBuffer();
+                                    const emacsUint8Array = new Uint8Array(emacsArrayBuffer);
+                                    
+                                    // Write to the virtual filesystem
+                                    this.Module.FS.writeFile('emacs.tap', emacsUint8Array);
+                                    console.log('Emacs tape loaded successfully:', emacsUint8Array.length, 'bytes');
+                                } else {
+                                    console.warn('Could not fetch Emacs tape file:', emacsResponse.status);
+                                }
+                            } catch (e) {
+                                console.warn('Error preloading Emacs tape:', e);
                             }
                             
                             // Preload bootstrap files if they exist
