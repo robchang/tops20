@@ -47,6 +47,11 @@
 #include <sys/stat.h>
 #include <errno.h>
 
+/* Ensure VDK_SECTOR_SIZE is defined */
+#ifndef VDK_SECTOR_SIZE
+# define VDK_SECTOR_SIZE 128  /* Default for all known DEC disks */
+#endif
+
 int vdk_init(struct vdk_unit *d, void (*errhdlr)(struct vdk_unit *, char *), char *arg) {
     /* Initialize virtual disk unit */
     memset((char *)d, 0, sizeof(*d)); /* Clear entire structure like Unix version */
@@ -59,9 +64,38 @@ int vdk_init(struct vdk_unit *d, void (*errhdlr)(struct vdk_unit *, char *), cha
 }
 
 int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
-    /* Mount disk image using Emscripten MEMFS */
+    /* Mount disk image using Emscripten MEMFS - following Unix version logic */
     struct stat st;
-    
+    size_t cvtsiz;
+
+    /* Validate device is initialized */
+    if (!d->dk_devname[0]) {
+        d->dk_err = EINVAL;
+        return 0; /* FALSE - Not initialized */
+    }
+
+    /* Prepare format-dependent configuration like Unix version */
+    if ((0 <= d->dk_format) && (d->dk_format < VDK_FMT_N)) {
+        cvtsiz = 1024 * sizeof(w10_t); /* Default buffer size */
+        
+        /* For VDK_FMT_RAW (RP06 default): bytesec = nwds * sizeof(w10_t) */
+        if (d->dk_format == VDK_FMT_RAW) {
+            d->dk_bytesec = d->dk_nwds * sizeof(w10_t);
+        } else {
+            /* Other formats would need format table lookup - not implemented for WASM */
+            d->dk_bytesec = d->dk_nwds * 9; /* Approximate for non-raw formats */
+        }
+        
+        /* RAW format needs no conversion */
+        d->dk_fmt2wds = NULL;
+        d->dk_wds2fmt = NULL;
+        
+    } else {
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_mount: Unknown disk format");
+        d->dk_err = EINVAL;
+        return 0; /* FALSE */
+    }
+
     /* Close any existing file */
     if (d->dk_fd >= 0) {
         close(d->dk_fd);
@@ -70,14 +104,17 @@ int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
     
     /* Check if file exists */
     if (stat(path, &st) != 0) {
-        /* File doesn't exist, create it with proper RP06 size */
-        /* RP06: 128 bytes/sector * 20 sectors/track * 19 tracks/surface * 815 cylinders */
-        size_t disksize = 128 * 20 * 19 * 815; /* ~38MB */
+        /* File doesn't exist, create it using device geometry */
+        size_t disksize = (size_t)d->dk_bytesec * d->dk_nsecs * d->dk_ntrks * d->dk_ncyls;
+        
+        printf("[Creating %s disk file \"%s\" - %ld bytes]\n", 
+               d->dk_devname, path, (long)disksize);
         
         int fd = open(path, O_CREAT | O_RDWR, 0644);
         if (fd < 0) {
             if (d->dk_errhan) d->dk_errhan(d, "Cannot create disk file");
-            return -1;
+            d->dk_err = errno;
+            return 0; /* FALSE */
         }
         
         /* Initialize disk with zeros */
@@ -90,7 +127,8 @@ int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
             if (write(fd, zero_buf, to_write) != to_write) {
                 close(fd);
                 if (d->dk_errhan) d->dk_errhan(d, "Cannot initialize disk file");
-                return -1;
+                d->dk_err = errno;
+                return 0; /* FALSE */
             }
             remaining -= to_write;
         }
@@ -102,14 +140,16 @@ int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
     d->dk_fd = open(path, flags);
     if (d->dk_fd < 0) {
         if (d->dk_errhan) d->dk_errhan(d, "Cannot open disk file");
-        return -1;
+        d->dk_err = errno;
+        return 0; /* FALSE */
     }
     
-    /* Store filename */
+    /* Store write flag and filename */
+    d->dk_iswrite = wrtf;
     if (d->dk_filename) free(d->dk_filename);
     d->dk_filename = strdup(path);
     
-    return 1; /* Success - must return TRUE like Unix version */
+    return 1; /* TRUE - Success */
 }
 
 int vdk_unmount(struct vdk_unit *d) {
@@ -126,51 +166,78 @@ int vdk_unmount(struct vdk_unit *d) {
 }
 
 int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
-    /* Read sectors from disk */
+    /* Read sectors from disk - following Unix version exactly */
+    off_t daddr;
+    size_t bcnt;
+    ssize_t ndone = 0;
+    
+    d->dk_err = 0;
+    
     if (d->dk_fd < 0) return 0; /* Not mounted */
     
-    /* Calculate byte offset (128 bytes per sector) */
-    off_t offset = (off_t)secaddr * 128;
-    size_t bytes_to_read = nsec * 128;
+    /* RAW format (no conversion) - matches Unix version logic */
+    daddr = ((off_t)secaddr) * VDK_SECTOR_SIZE * sizeof(w10_t);
+    bcnt = nsec * VDK_SECTOR_SIZE * sizeof(w10_t);
     
     /* Seek to position */
-    if (lseek(d->dk_fd, offset, SEEK_SET) != offset) {
-        if (d->dk_errhan) d->dk_errhan(d, "Disk seek error");
+    if (lseek(d->dk_fd, daddr, SEEK_SET) != daddr) {
+        d->dk_err = errno;
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_read: seek failed");
         return 0;
     }
     
     /* Read data */
-    ssize_t bytes_read = read(d->dk_fd, (char*)wp, bytes_to_read);
-    if (bytes_read < 0) {
-        if (d->dk_errhan) d->dk_errhan(d, "Disk read error");
+    ndone = read(d->dk_fd, (char*)wp, bcnt);
+    if (ndone < 0) {
+        d->dk_err = errno;
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_read: read failed");
         return 0;
     }
     
-    return bytes_read / 128; /* Return sectors read */
+    /* Handle sparse files - fill unread words with zeros */
+    if (ndone < bcnt) {
+        memset(((char *)wp) + ndone, 0, bcnt - ndone);
+    }
+    
+    return nsec; /* Always return full sector count for RAW format */
 }
 
 int vdk_write(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
-    /* Write sectors to disk */
+    /* Write sectors to disk - following Unix version exactly */
+    off_t daddr;
+    size_t bcnt;
+    ssize_t ndone;
+    
+    d->dk_err = 0;
+    
     if (d->dk_fd < 0) return 0; /* Not mounted */
     
-    /* Calculate byte offset (128 bytes per sector) */
-    off_t offset = (off_t)secaddr * 128;
-    size_t bytes_to_write = nsec * 128;
+    /* RAW format (no conversion) - matches Unix version logic */
+    daddr = ((off_t)secaddr) * VDK_SECTOR_SIZE * sizeof(w10_t);
+    bcnt = nsec * VDK_SECTOR_SIZE * sizeof(w10_t);
     
     /* Seek to position */
-    if (lseek(d->dk_fd, offset, SEEK_SET) != offset) {
-        if (d->dk_errhan) d->dk_errhan(d, "Disk seek error");
+    if (lseek(d->dk_fd, daddr, SEEK_SET) != daddr) {
+        d->dk_err = errno;
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_write: seek failed");
         return 0;
     }
     
     /* Write data */
-    ssize_t bytes_written = write(d->dk_fd, (char*)wp, bytes_to_write);
-    if (bytes_written < 0) {
-        if (d->dk_errhan) d->dk_errhan(d, "Disk write error");
+    ndone = write(d->dk_fd, (char*)wp, bcnt);
+    if (ndone < 0) {
+        d->dk_err = errno;
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_write: write failed");
         return 0;
     }
     
-    return bytes_written / 128; /* Return sectors written */
+    if (ndone != bcnt) {
+        d->dk_err = errno;
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_write: incomplete write");
+        return ndone / (VDK_SECTOR_SIZE * sizeof(w10_t));
+    }
+    
+    return nsec; /* Return full sector count written */
 }
 #else
 
