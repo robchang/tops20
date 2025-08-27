@@ -41,12 +41,136 @@
 #include "vdisk.h"
 
 #if defined(__EMSCRIPTEN__)
-/* Stub out vdisk for WebAssembly builds (no disk I/O supported) */
-int vdk_init(struct vdk_unit *d, void (*errhdlr)(struct vdk_unit *, char *), char *arg) { return -1; }
-int vdk_mount(struct vdk_unit *d, char *path, int wrtf) { return -1; }
-int vdk_unmount(struct vdk_unit *d) { return -1; }
-int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) { return 0; }
-int vdk_write(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) { return 0; }
+/* WebAssembly implementation using Emscripten MEMFS */
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <errno.h>
+
+int vdk_init(struct vdk_unit *d, void (*errhdlr)(struct vdk_unit *, char *), char *arg) {
+    /* Initialize virtual disk unit */
+    d->dk_fd = -1;
+    d->dk_errhan = errhdlr;
+    d->dk_errarg = arg;
+    d->dk_err = 0;
+    d->dk_filename = NULL;
+    return 0; /* Success */
+}
+
+int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
+    /* Mount disk image using Emscripten MEMFS */
+    struct stat st;
+    
+    /* Close any existing file */
+    if (d->dk_fd >= 0) {
+        close(d->dk_fd);
+        d->dk_fd = -1;
+    }
+    
+    /* Check if file exists */
+    if (stat(path, &st) != 0) {
+        /* File doesn't exist, create it with proper RP06 size */
+        /* RP06: 128 bytes/sector * 20 sectors/track * 19 tracks/surface * 815 cylinders */
+        size_t disksize = 128 * 20 * 19 * 815; /* ~38MB */
+        
+        int fd = open(path, O_CREAT | O_RDWR, 0644);
+        if (fd < 0) {
+            if (d->dk_errhan) d->dk_errhan(d, "Cannot create disk file");
+            return -1;
+        }
+        
+        /* Initialize disk with zeros */
+        char zero_buf[4096];
+        memset(zero_buf, 0, sizeof(zero_buf));
+        
+        size_t remaining = disksize;
+        while (remaining > 0) {
+            size_t to_write = (remaining > sizeof(zero_buf)) ? sizeof(zero_buf) : remaining;
+            if (write(fd, zero_buf, to_write) != to_write) {
+                close(fd);
+                if (d->dk_errhan) d->dk_errhan(d, "Cannot initialize disk file");
+                return -1;
+            }
+            remaining -= to_write;
+        }
+        close(fd);
+    }
+    
+    /* Open disk file */
+    int flags = wrtf ? O_RDWR : O_RDONLY;
+    d->dk_fd = open(path, flags);
+    if (d->dk_fd < 0) {
+        if (d->dk_errhan) d->dk_errhan(d, "Cannot open disk file");
+        return -1;
+    }
+    
+    /* Store filename */
+    if (d->dk_filename) free(d->dk_filename);
+    d->dk_filename = strdup(path);
+    
+    return 0; /* Success */
+}
+
+int vdk_unmount(struct vdk_unit *d) {
+    /* Unmount disk */
+    if (d->dk_fd >= 0) {
+        close(d->dk_fd);
+        d->dk_fd = -1;
+    }
+    if (d->dk_filename) {
+        free(d->dk_filename);
+        d->dk_filename = NULL;
+    }
+    return 0;
+}
+
+int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
+    /* Read sectors from disk */
+    if (d->dk_fd < 0) return 0; /* Not mounted */
+    
+    /* Calculate byte offset (128 bytes per sector) */
+    off_t offset = (off_t)secaddr * 128;
+    size_t bytes_to_read = nsec * 128;
+    
+    /* Seek to position */
+    if (lseek(d->dk_fd, offset, SEEK_SET) != offset) {
+        if (d->dk_errhan) d->dk_errhan(d, "Disk seek error");
+        return 0;
+    }
+    
+    /* Read data */
+    ssize_t bytes_read = read(d->dk_fd, (char*)wp, bytes_to_read);
+    if (bytes_read < 0) {
+        if (d->dk_errhan) d->dk_errhan(d, "Disk read error");
+        return 0;
+    }
+    
+    return bytes_read / 128; /* Return sectors read */
+}
+
+int vdk_write(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
+    /* Write sectors to disk */
+    if (d->dk_fd < 0) return 0; /* Not mounted */
+    
+    /* Calculate byte offset (128 bytes per sector) */
+    off_t offset = (off_t)secaddr * 128;
+    size_t bytes_to_write = nsec * 128;
+    
+    /* Seek to position */
+    if (lseek(d->dk_fd, offset, SEEK_SET) != offset) {
+        if (d->dk_errhan) d->dk_errhan(d, "Disk seek error");
+        return 0;
+    }
+    
+    /* Write data */
+    ssize_t bytes_written = write(d->dk_fd, (char*)wp, bytes_to_write);
+    if (bytes_written < 0) {
+        if (d->dk_errhan) d->dk_errhan(d, "Disk write error");
+        return 0;
+    }
+    
+    return bytes_written / 128; /* Return sectors written */
+}
 #else
 
 #ifdef RCSID

@@ -3220,6 +3220,16 @@ async function createWasm() {
   }
   }
 
+  function ___syscall_fstat64(fd, buf) {
+  try {
+  
+      return SYSCALLS.writeStat(buf, FS.fstat(fd));
+    } catch (e) {
+    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
+    return -e.errno;
+  }
+  }
+
   
   function ___syscall_ioctl(fd, op, varargs) {
   SYSCALLS.varargs = varargs;
@@ -3317,6 +3327,32 @@ async function createWasm() {
   }
   }
 
+  function ___syscall_lstat64(path, buf) {
+  try {
+  
+      path = SYSCALLS.getStr(path);
+      return SYSCALLS.writeStat(buf, FS.lstat(path));
+    } catch (e) {
+    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
+    return -e.errno;
+  }
+  }
+
+  function ___syscall_newfstatat(dirfd, path, buf, flags) {
+  try {
+  
+      path = SYSCALLS.getStr(path);
+      var nofollow = flags & 256;
+      var allowEmpty = flags & 4096;
+      flags = flags & (~6400);
+      path = SYSCALLS.calculateAt(dirfd, path, allowEmpty);
+      return SYSCALLS.writeStat(buf, nofollow ? FS.lstat(path) : FS.stat(path));
+    } catch (e) {
+    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
+    return -e.errno;
+  }
+  }
+
   
   function ___syscall_openat(dirfd, path, flags, varargs) {
   SYSCALLS.varargs = varargs;
@@ -3326,6 +3362,17 @@ async function createWasm() {
       path = SYSCALLS.calculateAt(dirfd, path);
       var mode = varargs ? syscallGetVarargI() : 0;
       return FS.open(path, flags, mode).fd;
+    } catch (e) {
+    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
+    return -e.errno;
+  }
+  }
+
+  function ___syscall_stat64(path, buf) {
+  try {
+  
+      path = SYSCALLS.getStr(path);
+      return SYSCALLS.writeStat(buf, FS.stat(path));
     } catch (e) {
     if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
     return -e.errno;
@@ -3653,20 +3700,20 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
 // end include: postlibrary.js
 
 var ASM_CONSTS = {
-  8426360: ($0) => { console.log('[DEBUG WASM] klh10_set_ring_buffer_offset called with offset:', $0.toString(16)); },  
- 8426459: ($0) => { console.log('[DEBUG WASM] Setting up ring buffers in WASM memory at offset:', $0.toString(16)); },  
- 8426559: ($0, $1, $2) => { console.log('[DEBUG WASM] Initializing ONLY size field, preserving JavaScript write_pos/read_pos'); console.log('[DEBUG WASM] BEFORE: write_pos=' + $0 + ', read_pos=' + $1 + ', size=' + $2); },  
- 8426754: ($0, $1, $2) => { console.log('[DEBUG WASM] AFTER: write_pos=' + $0 + ', read_pos=' + $1 + ', size=' + $2); },  
- 8426848: ($0) => { console.log('[DEBUG WASM] Ring buffers initialized in WASM memory. Input at offset:', ($0).toString(16)); },  
- 8426958: ($0) => { if (typeof postMessage !== 'undefined') { postMessage({ type: 'mode_change', data: $0 === 0 ? 'run' : 'command' }); } },  
- 8427080: ($0, $1) => { var sharedMemory = Module.wasmMemory; if (!sharedMemory || !sharedMemory.buffer) { console.error('[DEBUG WASM] No shared WASM memory available in os_ttyout'); return 0; } var buffer = new Uint8Array(sharedMemory.buffer); var view = new DataView(sharedMemory.buffer); var baseOffset = $0; var char = $1; var size = 4096; var write_pos = view.getUint32(baseOffset, true); var read_pos = view.getUint32(baseOffset + 4, true); var next_write_pos = (write_pos + 1) % size; if (next_write_pos === read_pos) { return 0; } buffer[baseOffset + 16 + write_pos] = char; view.setUint32(baseOffset, next_write_pos, true); if (char >= 32 && char <= 126) { console.log('🔥 WASM: Wrote char=' + String.fromCharCode(char) + ' to output ring at offset=0x' + baseOffset.toString(16) + ', write_pos=' + write_pos + ', next_write_pos=' + next_write_pos); } return 1; },  
- 8427932: ($0) => { console.log('[DEBUG WASM] ============================================'); console.log('[DEBUG WASM] os_ttycmline() CALLED! buffer size=' + $0); console.log('[DEBUG WASM] ============================================'); },  
- 8428154: () => { console.log('[DEBUG WASM] os_ttycmline: Starting to wait for input...'); },  
- 8428231: ($0) => { console.log('[DEBUG WASM] os_ttycmline: GOT CHARACTER: ' + String.fromCharCode($0) + ' (code ' + $0 + ')'); },  
- 8428343: ($0) => { console.log('[DEBUG WASM] os_ttycmline: Found line ending, returning line: "' + UTF8ToString($0) + '"'); },  
- 8428452: ($0) => { console.log('[DEBUG WASM] ring_buffer_has_complete_line: found line ending at pos ' + $0); },  
- 8428547: ($0) => { var sharedMemory = Module.wasmMemory; if (!sharedMemory || !sharedMemory.buffer) { console.error('[DEBUG WASM] No shared WASM memory available in ring_buffer_available_data'); return 0; } var buffer = new Uint8Array(sharedMemory.buffer); var view = new DataView(sharedMemory.buffer); var baseOffset = $0; var write_pos = view.getUint32(baseOffset, true); var read_pos = view.getUint32(baseOffset + 4, true); var size = 4096; var available; if (write_pos >= read_pos) { available = write_pos - read_pos; } else { available = size - (read_pos - write_pos); } if (available > 0) { console.log('[DEBUG WASM] FOUND DATA using sharedMemory.buffer! write_pos=' + write_pos + ', read_pos=' + read_pos + ', available=' + available); } return available; },  
- 8429295: ($0) => { var sharedMemory = Module.wasmMemory; if (!sharedMemory || !sharedMemory.buffer) { console.error('[DEBUG WASM] No shared WASM memory available in ring_buffer_read_char'); return -1; } var buffer = new Uint8Array(sharedMemory.buffer); var view = new DataView(sharedMemory.buffer); var baseOffset = $0; var size = 4096; var write_pos = view.getUint32(baseOffset, true); var read_pos = view.getUint32(baseOffset + 4, true); var available = (write_pos >= read_pos) ? (write_pos - read_pos) : (size - (read_pos - write_pos)); if (available < 1) { return -1; } var char = buffer[baseOffset + 16 + read_pos]; var next_read_pos = (read_pos + 1) % size; view.setUint32(baseOffset + 4, next_read_pos, true); console.log('[DEBUG WASM] Using sharedMemory.buffer - read char ' + String.fromCharCode(char) + ' (code ' + char + '), read_pos ' + read_pos + ' -> ' + next_read_pos); return char; }
+  8426488: ($0) => { console.log('[DEBUG WASM] klh10_set_ring_buffer_offset called with offset:', $0.toString(16)); },  
+ 8426587: ($0) => { console.log('[DEBUG WASM] Setting up ring buffers in WASM memory at offset:', $0.toString(16)); },  
+ 8426687: ($0, $1, $2) => { console.log('[DEBUG WASM] Initializing ONLY size field, preserving JavaScript write_pos/read_pos'); console.log('[DEBUG WASM] BEFORE: write_pos=' + $0 + ', read_pos=' + $1 + ', size=' + $2); },  
+ 8426882: ($0, $1, $2) => { console.log('[DEBUG WASM] AFTER: write_pos=' + $0 + ', read_pos=' + $1 + ', size=' + $2); },  
+ 8426976: ($0) => { console.log('[DEBUG WASM] Ring buffers initialized in WASM memory. Input at offset:', ($0).toString(16)); },  
+ 8427086: ($0) => { if (typeof postMessage !== 'undefined') { postMessage({ type: 'mode_change', data: $0 === 0 ? 'run' : 'command' }); } },  
+ 8427208: ($0, $1) => { var sharedMemory = Module.wasmMemory; if (!sharedMemory || !sharedMemory.buffer) { console.error('[DEBUG WASM] No shared WASM memory available in os_ttyout'); return 0; } var buffer = new Uint8Array(sharedMemory.buffer); var view = new DataView(sharedMemory.buffer); var baseOffset = $0; var char = $1; var size = 4096; var write_pos = view.getUint32(baseOffset, true); var read_pos = view.getUint32(baseOffset + 4, true); var next_write_pos = (write_pos + 1) % size; if (next_write_pos === read_pos) { return 0; } buffer[baseOffset + 16 + write_pos] = char; view.setUint32(baseOffset, next_write_pos, true); if (char >= 32 && char <= 126) { console.log('🔥 WASM: Wrote char=' + String.fromCharCode(char) + ' to output ring at offset=0x' + baseOffset.toString(16) + ', write_pos=' + write_pos + ', next_write_pos=' + next_write_pos); } return 1; },  
+ 8428060: ($0) => { console.log('[DEBUG WASM] ============================================'); console.log('[DEBUG WASM] os_ttycmline() CALLED! buffer size=' + $0); console.log('[DEBUG WASM] ============================================'); },  
+ 8428282: () => { console.log('[DEBUG WASM] os_ttycmline: Starting to wait for input...'); },  
+ 8428359: ($0) => { console.log('[DEBUG WASM] os_ttycmline: GOT CHARACTER: ' + String.fromCharCode($0) + ' (code ' + $0 + ')'); },  
+ 8428471: ($0) => { console.log('[DEBUG WASM] os_ttycmline: Found line ending, returning line: "' + UTF8ToString($0) + '"'); },  
+ 8428580: ($0) => { console.log('[DEBUG WASM] ring_buffer_has_complete_line: found line ending at pos ' + $0); },  
+ 8428675: ($0) => { var sharedMemory = Module.wasmMemory; if (!sharedMemory || !sharedMemory.buffer) { console.error('[DEBUG WASM] No shared WASM memory available in ring_buffer_available_data'); return 0; } var buffer = new Uint8Array(sharedMemory.buffer); var view = new DataView(sharedMemory.buffer); var baseOffset = $0; var write_pos = view.getUint32(baseOffset, true); var read_pos = view.getUint32(baseOffset + 4, true); var size = 4096; var available; if (write_pos >= read_pos) { available = write_pos - read_pos; } else { available = size - (read_pos - write_pos); } if (available > 0) { console.log('[DEBUG WASM] FOUND DATA using sharedMemory.buffer! write_pos=' + write_pos + ', read_pos=' + read_pos + ', available=' + available); } return available; },  
+ 8429423: ($0) => { var sharedMemory = Module.wasmMemory; if (!sharedMemory || !sharedMemory.buffer) { console.error('[DEBUG WASM] No shared WASM memory available in ring_buffer_read_char'); return -1; } var buffer = new Uint8Array(sharedMemory.buffer); var view = new DataView(sharedMemory.buffer); var baseOffset = $0; var size = 4096; var write_pos = view.getUint32(baseOffset, true); var read_pos = view.getUint32(baseOffset + 4, true); var available = (write_pos >= read_pos) ? (write_pos - read_pos) : (size - (read_pos - write_pos)); if (available < 1) { return -1; } var char = buffer[baseOffset + 16 + read_pos]; var next_read_pos = (read_pos + 1) % size; view.setUint32(baseOffset + 4, next_read_pos, true); console.log('[DEBUG WASM] Using sharedMemory.buffer - read char ' + String.fromCharCode(char) + ' (code ' + char + '), read_pos ' + read_pos + ' -> ' + next_read_pos); return char; }
 };
 
 // Imports from the Wasm binary.
@@ -3702,9 +3749,17 @@ var wasmImports = {
   /** @export */
   __syscall_fcntl64: ___syscall_fcntl64,
   /** @export */
+  __syscall_fstat64: ___syscall_fstat64,
+  /** @export */
   __syscall_ioctl: ___syscall_ioctl,
   /** @export */
+  __syscall_lstat64: ___syscall_lstat64,
+  /** @export */
+  __syscall_newfstatat: ___syscall_newfstatat,
+  /** @export */
   __syscall_openat: ___syscall_openat,
+  /** @export */
+  __syscall_stat64: ___syscall_stat64,
   /** @export */
   _abort_js: __abort_js,
   /** @export */

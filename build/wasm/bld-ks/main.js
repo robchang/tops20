@@ -278,7 +278,7 @@ class KLH10WebInterface {
 
         this.terminal.writeln('\x1b[36mLoading TOPS-20 Installation Configuration...\x1b[0m');
         
-        // Commands from inst-kst20.ini (excluding comments)
+        // Commands from inst-kst20.ini (KLH10 will auto-create disk file)
         const configCommands = [
             'devdef rh0  ub1   rh11\taddr=776700 br=6 vec=254',
             'devdef rh1  ub3   rh11\taddr=772440 br=6 vec=224',
