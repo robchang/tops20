@@ -2,7 +2,7 @@
 */
 /* $Id: tapedd.c,v 2.5 2002/03/28 16:52:31 klh Exp $
 */
-/*  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright ï¿½ 1992, 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -77,7 +77,9 @@
 # if HAVE_SYS_MTIO_H
 #  include <sys/mtio.h>
 # endif /* HAVE_SYS_MTIO_H */
-# define char8 unsigned char
+# ifndef char8
+#  define char8 unsigned char
+# endif
 # define O_BSIZE_8 0
 # define NULLDEV "/dev/null"
 # define FD_STDIN 0

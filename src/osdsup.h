@@ -57,7 +57,7 @@ typedef long osdaddr_t;
 
 /* Extra Emscripten compatibility typedefs */
 typedef int key_t;
-typedef int ossock_t;
+#define ossock_t int
 #define IFNAMSIZ 16
 #define SIGUSR1 10
 
@@ -85,7 +85,7 @@ typedef struct { long tv_sec; long tv_nsec; } osstm_t;
 /* Dummy replacements for missing Unix types/constants */
 typedef unsigned char u_char;
 typedef unsigned short u_short;
-typedef char char8;
+#define char8 unsigned char
 #define NULLDEV "/dev/null"
 
 /* Dummy network structs for Emscripten */

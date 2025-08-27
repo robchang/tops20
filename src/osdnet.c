@@ -33,7 +33,7 @@
 #include <errno.h>
 #include <sys/types.h>
 struct ifent; struct pfdata; struct osnpf; struct in_addr;
-typedef int ossock_t;
+/* ossock_t already defined in osdnet.h or osdsup.h */
 /* Stubbed networking for WebAssembly Demo Mode */
 int osn_ifsock(char *ifnam, ossock_t *s) { fprintf(stderr, "UNIMPLEMENTED: osdnet:osn_ifsock\n"); errno = ENOSYS; return -1; }
 int osn_ifclose(ossock_t s) { fprintf(stderr, "UNIMPLEMENTED: osdnet:osn_ifclose\n"); errno = ENOSYS; return -1; }
@@ -2732,4 +2732,3 @@ dumppkt(unsigned char *ucp, int cnt)
 #endif /* if 0 - still-excluded code */
 
 #endif /* !__EMSCRIPTEN__ */
-#endif /* end of __EMSCRIPTEN__ stub section */

@@ -47,7 +47,151 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>	/* For strrchr */
+#include <string.h>	/* For strrchr and memcpy */
+
+#if CENV_SYS_EMSCRIPTEN
+#include <emscripten.h>
+
+/* Ring buffer structure for WebAssembly <-> JavaScript communication */
+struct klh10_ring_buffer {
+    volatile uint32_t write_pos;
+    volatile uint32_t read_pos;
+    volatile uint32_t size;
+    volatile uint8_t data[4096];
+};
+
+struct klh10_shared_buffers {
+    struct klh10_ring_buffer input;   /* JS -> WASM */
+    struct klh10_ring_buffer output;  /* WASM -> JS */
+    volatile uint32_t current_mode;   /* 0=RUN, 1=RUNCMD */
+    volatile uint32_t flush_request;  /* Non-zero to request output flush */
+};
+
+/* Global pointer to shared buffers - allocated in JavaScript, shared with WASM */
+static struct klh10_shared_buffers *shared_buffers = NULL;
+
+/* Ring buffer helper functions */
+static int ring_buffer_init(struct klh10_ring_buffer *rb) {
+    rb->write_pos = 0;
+    rb->read_pos = 0; 
+    rb->size = 4096;
+    return 1;
+}
+
+static int ring_buffer_available_space(struct klh10_ring_buffer *rb) {
+    uint32_t write_pos = rb->write_pos;
+    uint32_t read_pos = rb->read_pos;
+    if (write_pos >= read_pos) {
+        return (rb->size - 1) - (write_pos - read_pos);
+    } else {
+        return (read_pos - write_pos) - 1;
+    }
+}
+
+static int ring_buffer_available_data(struct klh10_ring_buffer *rb) {
+    uint32_t write_pos = rb->write_pos;
+    uint32_t read_pos = rb->read_pos;
+    if (write_pos >= read_pos) {
+        return write_pos - read_pos;
+    } else {
+        return rb->size - (read_pos - write_pos);
+    }
+}
+
+static int ring_buffer_write_char(struct klh10_ring_buffer *rb, char c) {
+    if (ring_buffer_available_space(rb) < 1) {
+        return 0; /* Buffer full */
+    }
+    
+    rb->data[rb->write_pos] = c;
+    rb->write_pos = (rb->write_pos + 1) % rb->size;
+    return 1;
+}
+
+static int ring_buffer_read_char(struct klh10_ring_buffer *rb) {
+    if (ring_buffer_available_data(rb) < 1) {
+        return -1; /* Buffer empty */
+    }
+    
+    int c = rb->data[rb->read_pos];
+    rb->read_pos = (rb->read_pos + 1) % rb->size;
+    return c;
+}
+
+static int ring_buffer_has_complete_line(struct klh10_ring_buffer *rb) {
+    uint32_t pos = rb->read_pos;
+    int data_count = ring_buffer_available_data(rb);
+    
+    for (int i = 0; i < data_count; i++) {
+        if (rb->data[pos] == '\n' || rb->data[pos] == '\r') {
+            return 1;
+        }
+        pos = (pos + 1) % rb->size;
+    }
+    return 0;
+}
+
+static char* ring_buffer_read_line(struct klh10_ring_buffer *rb, char *buffer, int size) {
+    int i = 0;
+    int c;
+    
+    while (i < size - 1) {
+        c = ring_buffer_read_char(rb);
+        if (c < 0) break; /* No more data */
+        
+        if (c == '\r') {
+            /* Skip CR, look for LF */
+            int next = ring_buffer_read_char(rb);
+            if (next >= 0 && next != '\n') {
+                /* Put back non-LF character */
+                rb->read_pos = (rb->read_pos - 1 + rb->size) % rb->size;
+            }
+            break;
+        } else if (c == '\n') {
+            break;
+        } else {
+            buffer[i++] = c;
+        }
+    }
+    
+    buffer[i] = '\0';
+    return (i > 0 || c >= 0) ? buffer : NULL;
+}
+
+/* Line buffer for accumulating characters until CR */
+static char line_buffer[1024];
+static int line_buffer_pos = 0;
+
+/* WebAssembly export for JavaScript to set shared buffer pointer */
+EMSCRIPTEN_KEEPALIVE
+void klh10_set_shared_buffers(struct klh10_shared_buffers *buffers) {
+    shared_buffers = buffers;
+    if (shared_buffers) {
+        ring_buffer_init(&shared_buffers->input);
+        ring_buffer_init(&shared_buffers->output);
+        shared_buffers->current_mode = 1; /* Start in RUNCMD mode */
+        shared_buffers->flush_request = 0;
+        
+        /* Initialize line buffer */
+        line_buffer_pos = 0;
+        line_buffer[0] = '\0';
+    }
+}
+
+/* WebAssembly export for mode changes - kept for compatibility */  
+EMSCRIPTEN_KEEPALIVE
+void klh10_set_mode(int mode) {
+    /* This is now handled by the mode setting functions above */
+}
+
+/* WebAssembly export for forcing output flush - kept for compatibility */
+EMSCRIPTEN_KEEPALIVE  
+void klh10_force_flush(void) {
+    if (shared_buffers) {
+        shared_buffers->flush_request = 1;
+    }
+}
+#endif
 
 #include "kn10def.h"
 #include "osdsup.h"
@@ -540,7 +684,11 @@ os_ttycmdrunmode(void)
     os_ttycmdmode();
 
 #elif CENV_SYS_EMSCRIPTEN
-    /* Notify web interface that we're entering command mode */
+    /* Update shared buffer mode */
+    if (shared_buffers) {
+        shared_buffers->current_mode = 1;  /* 1 = RUNCMD mode */
+    }
+    /* Also notify web interface */
     extern void klh10_set_mode(int mode);
     klh10_set_mode(1);  /* 1 = command mode */
 #else
@@ -567,7 +715,11 @@ os_ttyrunmode(void)
 # endif
 
 #elif CENV_SYS_EMSCRIPTEN
-    /* Notify web interface that we're entering run mode */
+    /* Update shared buffer mode */
+    if (shared_buffers) {
+        shared_buffers->current_mode = 0;  /* 0 = RUN mode */
+    }
+    /* Also notify web interface */
     extern void klh10_set_mode(int mode);
     klh10_set_mode(0);  /* 0 = run mode */
 #else
@@ -598,9 +750,16 @@ os_ttyintest(void)
 #elif CENV_SYS_SOLARIS || CENV_SYS_DECOSF || CENV_SYS_XBSD || CENV_SYS_LINUX
     int retval;
 #elif CENV_SYS_EMSCRIPTEN
-    /* Use custom input system for WebAssembly */
-    extern int klh10_input_available(void);
-    return klh10_input_available();
+    /* Use ring buffer system for WebAssembly */
+    if (!shared_buffers) return 0;
+    
+    if (shared_buffers->current_mode == 1) {
+        /* RUNCMD mode: check for complete lines */
+        return ring_buffer_has_complete_line(&shared_buffers->input) ? 1 : 0;
+    } else {
+        /* RUN mode: check for any available characters */
+        return ring_buffer_available_data(&shared_buffers->input);
+    }
 #endif
 #if !CENV_SYS_EMSCRIPTEN
     if (ioctl(0, FIONREAD, &retval) != 0)	/* If this call fails, */
@@ -688,6 +847,18 @@ os_ttyout(int ch)
 # endif
     return write(1, &chloc, 1) == 1;
 
+#elif CENV_SYS_EMSCRIPTEN
+    /* Write directly to SharedArrayBuffer via JavaScript function */
+    char chloc = ch & 0177;  /* Mask off T20 parity */
+    
+    /* Call JavaScript function to write to shared ring buffer */
+    return EM_ASM_INT({
+        if (typeof writeCharToSharedBuffer === 'function') {
+            return writeCharToSharedBuffer($0);
+        }
+        return 0;
+    }, (int)chloc);
+#else
 // Emscripten stubs consolidated later
 #endif
 }
@@ -705,6 +876,21 @@ os_ttysout(char *buf, int len)		/* Note length is signed int */
     CheckEvents(FALSE);
 # endif
     return write(1, buf, (size_t)len) == len;
+
+#elif CENV_SYS_EMSCRIPTEN
+    /* Write string output directly to SharedArrayBuffer via JavaScript function */
+    int i;
+    for (i = 0; i < len; i++) {
+        if (!EM_ASM_INT({
+            if (typeof writeCharToSharedBuffer === 'function') {
+                return writeCharToSharedBuffer($0);
+            }
+            return 0;
+        }, (int)buf[i])) {
+            return 0; // Failed to write character
+        }
+    }
+    return 1; // Success
 
 // Emscripten stubs consolidated later
 #endif
@@ -760,9 +946,53 @@ os_ttycmline(char *buffer, int size)
     return buffer;
   }
 #elif CENV_SYS_EMSCRIPTEN
-    /* Use custom input system for WebAssembly */
-    extern char *klh10_get_line(char *buffer, int size);
-    return klh10_get_line(buffer, size);
+    /* Use ring buffer system for WebAssembly */
+    if (!shared_buffers) {
+        /* No ring buffer system - busy wait and return empty line */
+        for (volatile int i = 0; i < 10000000; i++); /* Wait a bit */
+        if (size > 0) {
+            buffer[0] = '\0';
+            return buffer;
+        }
+        return NULL;
+    }
+    
+    
+    /* Drain ring buffer character by character until we get CR */
+    while (1) {
+        /* Wait for a character to be available */
+        int wait_count = 0;
+        while (ring_buffer_available_data(&shared_buffers->input) == 0) {
+            for (volatile int i = 0; i < 100000; i++); /* Brief busy wait */
+            wait_count++;
+        }
+        
+        /* Get the character */
+        int ch = ring_buffer_read_char(&shared_buffers->input);
+        if (ch < 0) {
+            continue; /* Should not happen, but be safe */
+        }
+        
+        /* Handle the character */
+        if (ch == '\r' || ch == '\n') {
+            /* End of line - copy to output buffer and return */
+            int copy_len = (line_buffer_pos < size - 1) ? line_buffer_pos : size - 1;
+            memcpy(buffer, line_buffer, copy_len);
+            buffer[copy_len] = '\0';
+            
+            /* Reset line buffer for next line */
+            line_buffer_pos = 0;
+            line_buffer[0] = '\0';
+            
+            return buffer;
+        } else {
+            /* Accumulate character in line buffer */
+            if (line_buffer_pos < sizeof(line_buffer) - 1) {
+                line_buffer[line_buffer_pos++] = ch;
+                line_buffer[line_buffer_pos] = '\0';
+            }
+        }
+    }
 #else
     return fgets(buffer, size, stdin);
 #endif
@@ -909,7 +1139,12 @@ os_fdwrite(osfd_t fd,
 	len -= sres;
 	buf += sres;
     }
-// Emscripten stubs consolidated later
+    if (ares) *ares = res;
+    return TRUE;
+#else
+    /* Emscripten: just indicate success for now */
+    if (ares) *ares = len;
+    return TRUE;
 #endif
 }
 
