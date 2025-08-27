@@ -119,24 +119,12 @@ class KLH10WebInterface {
                 }
                 
                 // Write directly to WASM memory ring buffer - true zero-copy!
-                console.log(`📝 Main: Writing ${data.length} chars to WASM memory:`, JSON.stringify(data));
                 
-                // DEBUG: Show current buffer state before writing
-                const beforeWritePos = this.inputRingBuffer.view.getUint32(this.inputRingBuffer.inputOffset, true);
-                const beforeReadPos = this.inputRingBuffer.view.getUint32(this.inputRingBuffer.inputOffset + 4, true);
-                console.log(`📝 Main: BEFORE write - write_pos=${beforeWritePos}, read_pos=${beforeReadPos}`);
-                console.log(`📝 Main: Writing to memory buffer at offset 0x${this.inputRingBuffer.inputOffset.toString(16)}`);
-                console.log('📝 Main: JavaScript memory buffer object:', this.wasmMemory.buffer);
-                console.log('📝 Main: JavaScript memory buffer byteLength:', this.wasmMemory.buffer.byteLength);
                 
                 for (let i = 0; i < data.length; i++) {
                     const char = data[i];
                     const success = this.inputRingBuffer.writeInputChar(char);
                     
-                    // DEBUG: Show buffer state after each character
-                    const afterWritePos = this.inputRingBuffer.view.getUint32(this.inputRingBuffer.inputOffset, true);
-                    const afterReadPos = this.inputRingBuffer.view.getUint32(this.inputRingBuffer.inputOffset + 4, true);
-                    console.log(`  📝 Main: Wrote char '${char}' (code ${char.charCodeAt(0)}) - success: ${success}, new write_pos=${afterWritePos}`);
                     
                     if (!success) {
                         console.warn('Main: Input ring buffer full, character dropped');
@@ -228,7 +216,7 @@ class KLH10WebInterface {
                         
                     case 'mode_change':
                         this.inRuncmdMode = (data === 'command');
-                        console.log(`🔄 Mode change: ${data.toUpperCase()} - ${this.inRuncmdMode ? 'enabling' : 'disabling'} input echo`);
+                        // Echo is automatically disabled in RUN mode, enabled in CMDRUN mode
                         break;
                         
                     case 'error':
@@ -336,13 +324,6 @@ class KLH10WebInterface {
     drainOutputBuffer() {
         if (!this.outputRingBuffer) return;
         
-        // Debug: Check if ring buffer has data
-        const hasData = this.outputRingBuffer.hasOutputData();
-        if (hasData) {
-            const writePos = this.outputRingBuffer.view.getUint32(this.outputRingBuffer.outputOffset, true);
-            const readPos = this.outputRingBuffer.view.getUint32(this.outputRingBuffer.outputOffset + 4, true);
-            console.log(`🔥 Main: Output ring buffer HAS DATA at offset=0x${this.outputRingBuffer.outputOffset.toString(16)} - write_pos=${writePos}, read_pos=${readPos}`);
-        }
         
         let output = '';
         let charCount = 0;
@@ -355,10 +336,7 @@ class KLH10WebInterface {
         }
         
         if (output.length > 0) {
-            console.log(`🔥 Main: Draining ${charCount} chars from output buffer: "${output}"`);
             this.terminal.write(output);
-        } else if (hasData) {
-            console.log(`🔥 Main: Ring buffer had data but no characters read - possible sync issue`);
         }
     }
 

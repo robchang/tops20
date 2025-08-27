@@ -285,7 +285,8 @@ class EmulatorWorker {
             this.Module._klh10_set_ring_buffer_offset(this.ringBufferBase);
             
             // Create output ring buffer manager for JavaScript to write to
-            this.outputRingBuffer = new RingBufferManager(this.wasmMemory.buffer, this.ringBufferBase + 4112);
+            // RingBufferManager calculates output offset internally from base
+            this.outputRingBuffer = new RingBufferManager(this.wasmMemory.buffer, this.ringBufferBase);
             
             console.log('Worker: Ring buffers initialized at WASM memory offset:', this.ringBufferBase.toString(16));
         } else {

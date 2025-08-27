@@ -279,10 +279,19 @@ void klh10_set_ring_buffer_offset(uint32_t offset) {
     }, (uint32_t)&shared_buffers->input);
 }
 
-/* WebAssembly export for mode changes - kept for compatibility */  
+/* WebAssembly export for mode changes */  
 EMSCRIPTEN_KEEPALIVE
 void klh10_set_mode(int mode) {
-    /* This is now handled by the mode setting functions above */
+    /* Send mode change notification to JavaScript */
+    EM_ASM({
+        if (typeof postMessage !== 'undefined') {
+            // In worker context
+            postMessage({
+                type: 'mode_change', 
+                data: $0 === 0 ? 'run' : 'command'
+            });
+        }
+    }, mode);
 }
 
 /* WebAssembly export for forcing output flush - kept for compatibility */
@@ -788,9 +797,6 @@ os_ttycmdrunmode(void)
     /* Update shared buffer mode */
     if (shared_buffers) {
         shared_buffers->current_mode = 1;  /* 1 = RUNCMD mode */
-#ifdef __EMSCRIPTEN__
-        printf("[DEBUG WASM] os_ttycmdrunmode() called - switched to RUNCMD mode (mode=1)\n");
-#endif
     }
     /* Also notify web interface */
     extern void klh10_set_mode(int mode);
@@ -804,24 +810,10 @@ os_ttycmdrunmode(void)
 void
 os_ttyrunmode(void)
 {
-    printf("[DEBUG WASM] os_ttyrunmode() ENTRY\n");
-    fflush(stdout);
 #if CENV_SYS_EMSCRIPTEN
-    printf("[DEBUG WASM] os_ttyrunmode() taking CENV_SYS_EMSCRIPTEN path\n");
-    fflush(stdout);
-#ifdef __EMSCRIPTEN__
-    printf("[DEBUG WASM] os_ttyrunmode() called, shared_buffers=%p\n", (void*)shared_buffers);
-#endif
     /* Update shared buffer mode */
     if (shared_buffers) {
         shared_buffers->current_mode = 0;  /* 0 = RUN mode */
-#ifdef __EMSCRIPTEN__
-        printf("[DEBUG WASM] os_ttyrunmode() - switched to RUN mode (mode=0)\n");
-#endif
-    } else {
-#ifdef __EMSCRIPTEN__
-        printf("[DEBUG WASM] os_ttyrunmode() - ERROR: shared_buffers is NULL, cannot switch mode!\n");
-#endif
     }
     /* Also notify web interface */
     extern void klh10_set_mode(int mode);
@@ -882,11 +874,6 @@ os_ttyintest(void)
     } else {
         /* RUN mode: non-blocking check for any available characters */
         int result = ring_buffer_available_data(&shared_buffers->input);
-#ifdef __EMSCRIPTEN__
-        if (result > 0) {
-            printf("[DEBUG WASM] os_ttyintest() RUN mode detected %d chars available\n", result);
-        }
-#endif
         return result;
     }
 #endif
@@ -942,19 +929,7 @@ os_ttyin(void)
     }
     
     /* In RUN mode, provide non-blocking character input */
-    static int call_count = 0;
-    call_count++;
-    
     int ch = ring_buffer_read_char(&shared_buffers->input);
-    if (ch >= 0) {
-        printf("[DEBUG WASM] os_ttyin() SUCCESS: read char='%c' (code %d) from ring buffer (call #%d)\n", 
-               (ch >= 32 && ch <= 126) ? ch : '?', ch, call_count);
-    } else {
-        // Show when os_ttyin() is called but finds no input
-        if (call_count % 1000 == 1) {  // Only show every 1000th call to avoid spam
-            printf("[DEBUG WASM] os_ttyin() called %d times, no input available\n", call_count);
-        }
-    }
     return ch;  /* Returns -1 if no input available */
 #elif CENV_SYS_UNIX
   {

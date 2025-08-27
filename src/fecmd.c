@@ -160,11 +160,6 @@ receives during KN10 operation.
 void
 fe_ctyenable(int mode)
 {
-#ifdef __EMSCRIPTEN__
-    printf("[DEBUG WASM] fe_ctyenable() called with mode=%d (%s)\n", 
-           mode, (mode == 2) ? "FEMODE_CMDRUN" : 
-                 (mode == 3) ? "FEMODE_CTYRUN" : "OTHER");
-#endif
     switch (cpu.fe.fe_mode = mode) {
     case FEMODE_CMDRUN:
 	fe_ctycmdrunmode();
@@ -384,21 +379,8 @@ fe_ctycmdrunmode(void)
 void
 fe_ctyrunmode(void)
 {
-#ifdef __EMSCRIPTEN__
-    printf("[DEBUG WASM] fe_ctyrunmode() called, ttyback=%d\n", ttyback);
-#endif
     if (!ttyback) {
-#ifdef __EMSCRIPTEN__
-        printf("[DEBUG WASM] fe_ctyrunmode() calling os_ttyrunmode()\n");
-#endif
 	os_ttyrunmode();
-#ifdef __EMSCRIPTEN__
-        printf("[DEBUG WASM] fe_ctyrunmode() returned from os_ttyrunmode()\n");
-#endif
-    } else {
-#ifdef __EMSCRIPTEN__
-        printf("[DEBUG WASM] fe_ctyrunmode() skipping os_ttyrunmode() because ttyback=%d\n", ttyback);
-#endif
     }
 }
 
@@ -423,12 +405,6 @@ fe_ctyin(void)
 	/* Never returns */
     }
     int result = os_ttyin();
-#ifdef __EMSCRIPTEN__
-    if (result >= 0) {
-        printf("[DEBUG WASM] fe_ctyin() PDP-10 read char='%c' (code %d) - sending to KS10\n", 
-               (result >= 32 && result <= 126) ? result : '?', result);
-    }
-#endif
     return result;
 }
 

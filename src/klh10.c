@@ -461,15 +461,8 @@ fe_cmdloop(void)
 	    fprintf(stderr, "[femode %d prompt %d]", omode, prompted);
 
 	switch (omode) {
-#ifdef __EMSCRIPTEN__
-	    printf("[DEBUG WASM] Current mode: %d (CMDCONF=%d, CMDHALT=%d, CMDRUN=%d)\n", 
-	           omode, FEMODE_CMDCONF, FEMODE_CMDHALT, FEMODE_CMDRUN);
-#endif
 	case FEMODE_CMDCONF:
 	case FEMODE_CMDHALT:
-#ifdef __EMSCRIPTEN__
-	    printf("[DEBUG WASM] In FEMODE_CMDCONF/CMDHALT mode\n");
-#endif
 	    if (prompted)
 		command.cmd_flags |= CMDF_NOPRM;
 	    else
@@ -487,9 +480,6 @@ fe_cmdloop(void)
 	    /* See if input available.  If so, parse and execute, else
 	       run the CPU.
 	    */
-#ifdef __EMSCRIPTEN__
-	    printf("[DEBUG WASM] FEMODE_CMDRUN: checking input availability\n");
-#endif
 	    if (cminfile || fe_ctyintest()) {
 		if (prompted)
 		    command.cmd_flags |= CMDF_NOPRM;

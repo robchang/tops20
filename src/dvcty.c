@@ -122,9 +122,6 @@ cty_incheck(void)
 	** again later to see if 10 is accepting input.
 	*/
 #if KLH10_CPU_KS
-#ifdef __EMSCRIPTEN__
-	printf("[DEBUG WASM] cty_incheck calling cty_sin() with %d chars\n", inpend);
-#endif
 	if (((inpend =    cty_sin(inpend)) > 0)
 #elif KLH10_CPU_KL
 	if (((inpend = dte_ctysin(inpend)) > 0)
@@ -197,20 +194,8 @@ cty_sin(int cnt)
         return cnt;
 
     if ((ch = fe_ctyin()) < 0) {		/* Get single char */
-#ifdef __EMSCRIPTEN__
-        printf("[DEBUG WASM] cty_sin() fe_ctyin() returned -1 (no char)\n");
-#endif
 	return 0;			/* None left */
     }
-#ifdef __EMSCRIPTEN__
-    printf("[DEBUG WASM] cty_sin() fe_ctyin() returned char='%c' (code %d)\n", 
-           (ch >= 32 && ch <= 126) ? ch : '?', ch);
-#endif
-
-#ifdef __EMSCRIPTEN__
-    printf("[DEBUG WASM] cty_sin: got char='%c' (code %d), writing to PDP-10 memory and sending interrupt\n", 
-           (ch >= 32 && ch <= 126) ? ch : '?', ch);
-#endif
 
     if (cpu.fe.fe_ctydebug)
 	fprintf(stderr, "[CTYI: %o]", ch);
