@@ -49,12 +49,13 @@
 
 int vdk_init(struct vdk_unit *d, void (*errhdlr)(struct vdk_unit *, char *), char *arg) {
     /* Initialize virtual disk unit */
+    memset((char *)d, 0, sizeof(*d)); /* Clear entire structure like Unix version */
     d->dk_fd = -1;
     d->dk_errhan = errhdlr;
     d->dk_errarg = arg;
     d->dk_err = 0;
     d->dk_filename = NULL;
-    return 0; /* Success */
+    return 1; /* Success - must return TRUE like Unix version */
 }
 
 int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
@@ -108,7 +109,7 @@ int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
     if (d->dk_filename) free(d->dk_filename);
     d->dk_filename = strdup(path);
     
-    return 0; /* Success */
+    return 1; /* Success - must return TRUE like Unix version */
 }
 
 int vdk_unmount(struct vdk_unit *d) {
@@ -121,7 +122,7 @@ int vdk_unmount(struct vdk_unit *d) {
         free(d->dk_filename);
         d->dk_filename = NULL;
     }
-    return 0;
+    return 1; /* Success - must return 1 like Unix version */
 }
 
 int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
