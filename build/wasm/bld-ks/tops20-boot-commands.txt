@@ -1,0 +1,34 @@
+# TOPS-20 Boot Commands for KLH10 WebAssembly
+# Based on doc/kst20.txt installation sequence
+# Use {date-time} variable for automatic date/time insertion
+
+# 1. Load monitor from tape
+/l
+
+# 2. Start monitor at filesystem creation entry point
+# Use /g143 for new filesystem, /g147 if filesystem already exists
+/g143
+
+# Wait for prompts, then respond to filesystem questions:
+# (These will be prompted by the system, not sent automatically)
+
+# DO YOU WANT TO REPLACE THE FILE SYSTEM ON THE PUBLIC STRUCTURE? 
+Y
+
+# DO YOU WANT TO DEFINE THE PUBLIC STRUCTURE?
+Y
+
+# HOW MANY PACKS ARE IN THIS STRUCTURE:
+1
+
+# ON WHICH "CHANNEL,UNIT" IS LOGICAL PACK # 0 MOUNTED:
+0,0
+
+# ENTER CURRENT DATE AND TIME:
+{date-time}
+
+# YOU HAVE ENTERED [...] IS THIS CORRECT (Y,N)
+Y
+
+# WHY RELOAD?
+NEW

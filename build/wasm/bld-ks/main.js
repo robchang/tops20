@@ -149,10 +149,12 @@ class KLH10WebInterface {
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
         const loadConfigBtn = document.getElementById('loadConfigBtn');
+        const bootTops20Btn = document.getElementById('bootTops20Btn');
 
         startBtn.addEventListener('click', () => this.startEmulator());
         resetBtn.addEventListener('click', () => this.resetEmulator());
         loadConfigBtn.addEventListener('click', () => this.loadInstallationConfig());
+        bootTops20Btn.addEventListener('click', () => this.bootTops20());
 
         // Enable start button
         startBtn.disabled = false;
@@ -209,6 +211,7 @@ class KLH10WebInterface {
                         this.updateStatus('Emulator ready', 'ready');
                         document.getElementById('resetBtn').disabled = false;
                         document.getElementById('loadConfigBtn').disabled = false;
+                        document.getElementById('bootTops20Btn').disabled = false;
                         
                         // Start polling output from shared ring buffer
                         this.startOutputPolling();
@@ -231,6 +234,7 @@ class KLH10WebInterface {
                         document.getElementById('startBtn').disabled = false;
                         document.getElementById('resetBtn').disabled = true;
                         document.getElementById('loadConfigBtn').disabled = true;
+                        document.getElementById('bootTops20Btn').disabled = true;
                         
                         // Stop output polling
                         if (this.outputPollInterval) {
@@ -318,6 +322,86 @@ class KLH10WebInterface {
         });
     }
 
+    async bootTops20() {
+        if (!this.worker || !this.emulatorReady || !this.inputRingBuffer) {
+            console.warn('Boot TOPS-20 attempted but emulator not ready');
+            return;
+        }
+
+        try {
+            // Load the boot commands from the text file
+            const response = await fetch('tops20-boot-commands.txt');
+            if (!response.ok) {
+                throw new Error('Could not load boot commands file');
+            }
+            
+            const commandsText = await response.text();
+            const lines = commandsText.split('\n');
+            
+            // Process commands and filter out comments/empty lines
+            const bootCommands = [];
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed && !trimmed.startsWith('#')) {
+                    if (trimmed === '{date-time}') {
+                        // Generate current date/time in TOPS-20 format: DD-MMM-YYYY HHMM
+                        const now = new Date();
+                        const day = now.getDate().toString().padStart(2, '0');
+                        const months = ['JAN','FEB','MAR','APR','MAY','JUN',
+                                       'JUL','AUG','SEP','OCT','NOV','DEC'];
+                        const month = months[now.getMonth()];
+                        const year = now.getFullYear();
+                        const hours = now.getHours().toString().padStart(2, '0');
+                        const minutes = now.getMinutes().toString().padStart(2, '0');
+                        const dateTime = `${day}-${month}-${year} ${hours}${minutes}`;
+                        bootCommands.push(dateTime);
+                    } else {
+                        bootCommands.push(trimmed);
+                    }
+                }
+            }
+
+            this.terminal.writeln('\\x1b[36mStarting TOPS-20 boot sequence...\\x1b[0m');
+            this.terminal.writeln('\\x1b[33mCommands loaded from: tops20-boot-commands.txt\\x1b[0m');
+            
+            // Send each command with a delay
+            let delay = 0;
+            bootCommands.forEach((command, index) => {
+                setTimeout(() => {
+                    // Write command directly to WASM memory ring buffer
+                    const fullCommand = command + '\\r';
+                    for (let i = 0; i < fullCommand.length; i++) {
+                        this.inputRingBuffer.writeInputChar(fullCommand[i]);
+                    }
+                    
+                    // Show what we're sending if in command mode
+                    if (this.inRuncmdMode) {
+                        this.terminal.write(command + '\\r\\n');
+                    }
+                    
+                    // After the first few automatic commands, show instructions
+                    if (index === 1) { // After /g143 command
+                        setTimeout(() => {
+                            this.terminal.writeln('\\x1b[32mAutomatic commands sent. Monitor will prompt for responses.\\x1b[0m');
+                            this.terminal.writeln('\\x1b[33mAnswer filesystem questions as they appear.\\x1b[0m');
+                        }, 1000);
+                    }
+                }, delay);
+                
+                // Longer delay for first commands, shorter for responses
+                if (index < 2) {
+                    delay += 2000; // 2 second delay for /l and /g143
+                } else {
+                    delay += 1000; // 1 second delay for other commands
+                }
+            });
+
+        } catch (error) {
+            this.terminal.writeln(`\\x1b[31mError loading boot commands: ${error.message}\\x1b[0m`);
+            console.error('Error loading boot commands:', error);
+        }
+    }
+
     startOutputPolling() {
         // Poll output ring buffer at 60fps  
         this.outputPollInterval = setInterval(() => {
@@ -371,6 +455,7 @@ class KLH10WebInterface {
         document.getElementById('startBtn').disabled = false;
         document.getElementById('resetBtn').disabled = true;
         document.getElementById('loadConfigBtn').disabled = true;
+        document.getElementById('bootTops20Btn').disabled = true;
     }
 }
 
