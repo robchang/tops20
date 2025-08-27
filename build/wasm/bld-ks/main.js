@@ -280,59 +280,70 @@ class KLH10WebInterface {
         }
     }
 
-    loadInstallationConfig() {
+    async loadInstallationConfig() {
         if (!this.worker || !this.emulatorReady || !this.inputRingBuffer) {
             console.warn('Load config attempted but emulator not ready');
             return;
         }
 
-        this.terminal.writeln('\x1b[36mLoading TOPS-20 Installation Configuration...\x1b[0m');
-        
-        // Commands from inst-kst20.ini (KLH10 will auto-create disk file)
-        const configCommands = [
-            'devdef rh0  ub1   rh11\taddr=776700 br=6 vec=254',
-            'devdef rh1  ub3   rh11\taddr=772440 br=6 vec=224',
-            'devdef dsk0 rh0.0 rp\ttype=rp06 format=dbd9 path=T20-RP06.0-dbd9 iodly=0',
-            'devdef mta0 rh1.0 tm03\tfmtr=tm03 type=tu45',
-            'devmount mta0 bb-d867e-bm.tap fskip=2',
-            'devdef mta1 rh1.1 tm03\tfmtr=tm03 type=tu45',
-            'devmount mta1 emacs.tap',
-            'load smmtbt-k.sav'
-        ];
+        try {
+            // Load the config commands from the text file
+            const response = await fetch('tops20-config-commands.txt');
+            if (!response.ok) {
+                throw new Error('Could not load config commands file');
+            }
+            
+            const commandsText = await response.text();
+            const lines = commandsText.split('\n');
+            
+            // Process commands and filter out comments/empty lines
+            const configCommands = [];
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed && !trimmed.startsWith('#')) {
+                    configCommands.push(trimmed);
+                }
+            }
 
-        // Send each command with a delay to simulate typing
-        let delay = 0;
-        configCommands.forEach((command, index) => {
-            setTimeout(() => {
-                // Write command directly to WASM memory ring buffer
-                const fullCommand = command + '\r';
-                for (let i = 0; i < fullCommand.length; i++) {
-                    this.inputRingBuffer.writeInputChar(fullCommand[i]);
-                }
-                
-                // Show what we're sending if in command mode
-                if (this.inRuncmdMode) {
-                    this.terminal.write(command + '\r\n');
-                }
-                
-                // After all commands, show completion message and update button states
-                if (index === configCommands.length - 1) {
-                    setTimeout(() => {
-                        this.terminal.writeln('\x1b[32mConfiguration loaded! Ready to boot TOPS-20.\x1b[0m');
-                        this.terminal.writeln('\x1b[33mBootstrap tape: mta0 (bb-d867e-bm.tap)\x1b[0m');
-                        this.terminal.writeln('\x1b[33mEmacs tape: mta1 (emacs.tap)\x1b[0m');
-                        
-                        // Disable Load Config button and enable BOOT TOPS-20 button
-                        document.getElementById('loadConfigBtn').disabled = true;
-                        document.getElementById('bootTops20Btn').disabled = false;
-                        
-                        // Focus terminal after config loads
-                        this.terminal.focus();
-                    }, 100);
-                }
-            }, delay);
-            delay += 500; // 500ms delay between commands
-        });
+            this.terminal.writeln('\x1b[36mLoading TOPS-20 Installation Configuration...\x1b[0m');
+            this.terminal.writeln('\x1b[33mCommands loaded from: tops20-config-commands.txt\x1b[0m');
+
+            // Send each command with a delay to simulate typing
+            let delay = 0;
+            configCommands.forEach((command, index) => {
+                setTimeout(() => {
+                    // Write command directly to WASM memory ring buffer
+                    const fullCommand = command + '\r';
+                    for (let i = 0; i < fullCommand.length; i++) {
+                        this.inputRingBuffer.writeInputChar(fullCommand[i]);
+                    }
+                    
+                    // Show what we're sending if in command mode
+                    if (this.inRuncmdMode) {
+                        this.terminal.write(command + '\r\n');
+                    }
+                    
+                    // After all commands, show completion message and update button states
+                    if (index === configCommands.length - 1) {
+                        setTimeout(() => {
+                            this.terminal.writeln('\x1b[32mConfiguration loaded! Ready to boot TOPS-20.\x1b[0m');
+                            
+                            // Disable Load Config button and enable BOOT TOPS-20 button
+                            document.getElementById('loadConfigBtn').disabled = true;
+                            document.getElementById('bootTops20Btn').disabled = false;
+                            
+                            // Focus terminal after config loads
+                            this.terminal.focus();
+                        }, 100);
+                    }
+                }, delay);
+                delay += 500; // 500ms delay between commands
+            });
+
+        } catch (error) {
+            this.terminal.writeln(`\x1b[31mError loading config commands: ${error.message}\x1b[0m`);
+            console.error('Error loading config commands:', error);
+        }
     }
 
     async bootTops20() {

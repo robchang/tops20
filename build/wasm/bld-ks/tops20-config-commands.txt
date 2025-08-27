@@ -1,0 +1,19 @@
+# TOPS-20 Configuration Commands for KLH10 WebAssembly
+# These commands configure the emulator hardware before booting TOPS-20
+
+# Define RH11 controllers on separate Unibus channels
+devdef rh0  ub1   rh11	addr=776700 br=6 vec=254
+devdef rh1  ub3   rh11	addr=772440 br=6 vec=224
+
+# Define disk drive (RP06) - KLH10 will auto-create disk file
+devdef dsk0 rh0.0 rp	type=rp06 format=dbd9 path=T20-RP06.0-dbd9 iodly=0
+
+# Define tape drives (TM03 controllers)
+devdef mta0 rh1.0 tm03	fmtr=tm03 type=tu45
+devmount mta0 bb-d867e-bm.tap fskip=2
+
+devdef mta1 rh1.1 tm03	fmtr=tm03 type=tu45
+devmount mta1 emacs.tap
+
+# Load bootstrap program
+load smmtbt-k.sav
