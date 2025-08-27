@@ -355,35 +355,38 @@ class KLH10WebInterface {
                         const minutes = now.getMinutes().toString().padStart(2, '0');
                         const dateTime = `${day}-${month}-${year} ${hours}${minutes}`;
                         bootCommands.push(dateTime);
+                    } else if (trimmed === '{ctrl-c}') {
+                        // Send CTRL-C (ASCII 3)
+                        bootCommands.push('\x03');
                     } else {
                         bootCommands.push(trimmed);
                     }
                 }
             }
 
-            this.terminal.writeln('\\x1b[36mStarting TOPS-20 boot sequence...\\x1b[0m');
-            this.terminal.writeln('\\x1b[33mCommands loaded from: tops20-boot-commands.txt\\x1b[0m');
+            this.terminal.writeln('\x1b[36mStarting TOPS-20 boot sequence...\x1b[0m');
+            this.terminal.writeln('\x1b[33mCommands loaded from: tops20-boot-commands.txt\x1b[0m');
             
             // Send each command with a delay
             let delay = 0;
             bootCommands.forEach((command, index) => {
                 setTimeout(() => {
                     // Write command directly to WASM memory ring buffer
-                    const fullCommand = command + '\\r';
+                    const fullCommand = command + '\r';
                     for (let i = 0; i < fullCommand.length; i++) {
                         this.inputRingBuffer.writeInputChar(fullCommand[i]);
                     }
                     
                     // Show what we're sending if in command mode
                     if (this.inRuncmdMode) {
-                        this.terminal.write(command + '\\r\\n');
+                        this.terminal.write(command + '\r\n');
                     }
                     
                     // After the first few automatic commands, show instructions
                     if (index === 1) { // After /g143 command
                         setTimeout(() => {
-                            this.terminal.writeln('\\x1b[32mAutomatic commands sent. Monitor will prompt for responses.\\x1b[0m');
-                            this.terminal.writeln('\\x1b[33mAnswer filesystem questions as they appear.\\x1b[0m');
+                            this.terminal.writeln('\x1b[32mAutomatic commands sent. Monitor will prompt for responses.\x1b[0m');
+                            this.terminal.writeln('\x1b[33mAnswer filesystem questions as they appear.\x1b[0m');
                         }, 1000);
                     }
                 }, delay);
@@ -397,7 +400,7 @@ class KLH10WebInterface {
             });
 
         } catch (error) {
-            this.terminal.writeln(`\\x1b[31mError loading boot commands: ${error.message}\\x1b[0m`);
+            this.terminal.writeln(`\x1b[31mError loading boot commands: ${error.message}\x1b[0m`);
             console.error('Error loading boot commands:', error);
         }
     }
