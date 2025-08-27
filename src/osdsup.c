@@ -788,6 +788,9 @@ os_ttycmdrunmode(void)
     /* Update shared buffer mode */
     if (shared_buffers) {
         shared_buffers->current_mode = 1;  /* 1 = RUNCMD mode */
+#ifdef __EMSCRIPTEN__
+        printf("[DEBUG WASM] os_ttycmdrunmode() called - switched to RUNCMD mode (mode=1)\n");
+#endif
     }
     /* Also notify web interface */
     extern void klh10_set_mode(int mode);
@@ -801,13 +804,39 @@ os_ttycmdrunmode(void)
 void
 os_ttyrunmode(void)
 {
-#if CENV_SYS_UNIX
+    printf("[DEBUG WASM] os_ttyrunmode() ENTRY\n");
+    fflush(stdout);
+#if CENV_SYS_EMSCRIPTEN
+    printf("[DEBUG WASM] os_ttyrunmode() taking CENV_SYS_EMSCRIPTEN path\n");
+    fflush(stdout);
+#ifdef __EMSCRIPTEN__
+    printf("[DEBUG WASM] os_ttyrunmode() called, shared_buffers=%p\n", (void*)shared_buffers);
+#endif
+    /* Update shared buffer mode */
+    if (shared_buffers) {
+        shared_buffers->current_mode = 0;  /* 0 = RUN mode */
+#ifdef __EMSCRIPTEN__
+        printf("[DEBUG WASM] os_ttyrunmode() - switched to RUN mode (mode=0)\n");
+#endif
+    } else {
+#ifdef __EMSCRIPTEN__
+        printf("[DEBUG WASM] os_ttyrunmode() - ERROR: shared_buffers is NULL, cannot switch mode!\n");
+#endif
+    }
+    /* Also notify web interface */
+    extern void klh10_set_mode(int mode);
+    klh10_set_mode(0);  /* 0 = run mode */
+#elif CENV_SYS_UNIX
+    printf("[DEBUG WASM] os_ttyrunmode() taking CENV_SYS_UNIX path\n");
+    fflush(stdout);
 # if KLH10_CTYIO_INT
     tty_iosigon();		/* Turn on TTY I/O signalling */
 # endif
     ttyset(&runstate);		/* Change to "run" TTY state */
 
 #elif CENV_SYS_MAC
+    printf("[DEBUG WASM] os_ttyrunmode() taking CENV_SYS_MAC path\n");
+    fflush(stdout);
 # if CENV_USE_COMM_TOOLBOX
     os_ttycmforce();
     tty_crlf_mode = TRUE;
@@ -815,14 +844,6 @@ os_ttyrunmode(void)
     csetmode(C_RAW, stdin);	/* no line buffering */
 # endif
 
-#elif CENV_SYS_EMSCRIPTEN
-    /* Update shared buffer mode */
-    if (shared_buffers) {
-        shared_buffers->current_mode = 0;  /* 0 = RUN mode */
-    }
-    /* Also notify web interface */
-    extern void klh10_set_mode(int mode);
-    klh10_set_mode(0);  /* 0 = run mode */
 #else
 /* No implementation available for os_ttyrunmode on this platform */
 #endif
@@ -839,9 +860,6 @@ static int macsavchar = -1;
 int
 os_ttyintest(void)
 {
-    EM_ASM({
-        console.log('[DEBUG WASM] os_ttyintest() called');
-    });
     
 #if CENV_SYS_UNIX
   {
@@ -860,18 +878,16 @@ os_ttyintest(void)
     
     if (shared_buffers->current_mode == 1) {
         /* RUNCMD mode: non-blocking check for complete lines */
-        int has_line = ring_buffer_has_complete_line(&shared_buffers->input);
-        EM_ASM({
-            console.log('[DEBUG WASM] os_ttyintest: mode=RUNCMD, has_complete_line=' + $0);
-        }, has_line);
-        return has_line;
+        return ring_buffer_has_complete_line(&shared_buffers->input);
     } else {
         /* RUN mode: non-blocking check for any available characters */
-        int available = ring_buffer_available_data(&shared_buffers->input);
-        EM_ASM({
-            console.log('[DEBUG WASM] os_ttyintest: mode=RUN, available=' + $0);
-        }, available);
-        return available;
+        int result = ring_buffer_available_data(&shared_buffers->input);
+#ifdef __EMSCRIPTEN__
+        if (result > 0) {
+            printf("[DEBUG WASM] os_ttyintest() RUN mode detected %d chars available\n", result);
+        }
+#endif
+        return result;
     }
 #endif
 #if !CENV_SYS_EMSCRIPTEN
@@ -919,7 +935,28 @@ os_ttyintest(void)
 int
 os_ttyin(void)
 {
-#if CENV_SYS_UNIX
+#if CENV_SYS_EMSCRIPTEN
+    /* Use ring buffer system for WebAssembly - character input */
+    if (!shared_buffers) {
+        return -1;  /* Ring buffer not initialized */
+    }
+    
+    /* In RUN mode, provide non-blocking character input */
+    static int call_count = 0;
+    call_count++;
+    
+    int ch = ring_buffer_read_char(&shared_buffers->input);
+    if (ch >= 0) {
+        printf("[DEBUG WASM] os_ttyin() SUCCESS: read char='%c' (code %d) from ring buffer (call #%d)\n", 
+               (ch >= 32 && ch <= 126) ? ch : '?', ch, call_count);
+    } else {
+        // Show when os_ttyin() is called but finds no input
+        if (call_count % 1000 == 1) {  // Only show every 1000th call to avoid spam
+            printf("[DEBUG WASM] os_ttyin() called %d times, no input available\n", call_count);
+        }
+    }
+    return ch;  /* Returns -1 if no input available */
+#elif CENV_SYS_UNIX
   {
     unsigned char buf;
     if (read(0, (char *)&buf, 1) != 1)	/* If this call fails, */
@@ -939,7 +976,6 @@ os_ttyin(void)
   }
 # endif
 
-// Emscripten stubs consolidated later
 #else
 /* No implementation available for os_ttyin on this platform */
 #endif
@@ -948,7 +984,55 @@ os_ttyin(void)
 int
 os_ttyout(int ch)
 {
-#if CENV_SYS_UNIX || CENV_SYS_MAC
+#if CENV_SYS_EMSCRIPTEN
+    /* Write directly to output ring buffer using shared WASM memory */
+    char chloc = ch & 0177;  /* Mask off T20 parity */
+    
+    if (!shared_buffers) {
+        return 0;  /* Ring buffer not initialized */
+    }
+    
+    /* Write to output ring buffer using same approach as successful input */
+    int success = EM_ASM_INT({
+        // Use the shared WASM memory - same as working input code
+        var sharedMemory = Module.wasmMemory;
+        if (!sharedMemory || !sharedMemory.buffer) {
+            console.error('[DEBUG WASM] No shared WASM memory available in os_ttyout');
+            return 0;
+        }
+        
+        var buffer = new Uint8Array(sharedMemory.buffer);
+        var view = new DataView(sharedMemory.buffer);
+        var baseOffset = $0;  // Output ring buffer offset
+        var char = $1;
+        var size = 4096;
+        
+        var write_pos = view.getUint32(baseOffset, true);
+        var read_pos = view.getUint32(baseOffset + 4, true);
+        
+        // Check if buffer full
+        var next_write_pos = (write_pos + 1) % size;
+        if (next_write_pos === read_pos) {
+            return 0; // Buffer full
+        }
+        
+        // Write character to data area (offset 16)
+        buffer[baseOffset + 16 + write_pos] = char;
+        
+        // Update write position
+        view.setUint32(baseOffset, next_write_pos, true);
+        
+        // Show output chars (but only printable ones to reduce spam)
+        if (char >= 32 && char <= 126) {
+            console.log('🔥 WASM: Wrote char=' + String.fromCharCode(char) + ' to output ring at offset=0x' + baseOffset.toString(16) + ', write_pos=' + write_pos + ', next_write_pos=' + next_write_pos);
+        }
+        
+        return 1; // Success
+    }, (uintptr_t)&shared_buffers->output, (int)chloc);
+    
+    
+    return success;
+#elif CENV_SYS_UNIX || CENV_SYS_MAC
     char chloc = ch & 0177;		/* Sigh, must mask off T20 parity */
 # if CENV_USE_COMM_TOOLBOX
     /* Event check to allow stopping runaway typeout on Mac */
@@ -959,18 +1043,6 @@ os_ttyout(int ch)
     }
 # endif
     return write(1, &chloc, 1) == 1;
-
-#elif CENV_SYS_EMSCRIPTEN
-    /* Write directly to SharedArrayBuffer via JavaScript function */
-    char chloc = ch & 0177;  /* Mask off T20 parity */
-    
-    /* Call JavaScript function to write to shared ring buffer */
-    return EM_ASM_INT({
-        if (typeof writeCharToSharedBuffer === 'function') {
-            return writeCharToSharedBuffer($0);
-        }
-        return 0;
-    }, (int)chloc);
 #else
 // Emscripten stubs consolidated later
 #endif
@@ -991,15 +1063,49 @@ os_ttysout(char *buf, int len)		/* Note length is signed int */
     return write(1, buf, (size_t)len) == len;
 
 #elif CENV_SYS_EMSCRIPTEN
-    /* Write string output directly to SharedArrayBuffer via JavaScript function */
+    /* Write string output directly to output ring buffer using shared WASM memory */
+    if (!shared_buffers) {
+        return 0;  /* Ring buffer not initialized */
+    }
+    
     int i;
     for (i = 0; i < len; i++) {
-        if (!EM_ASM_INT({
-            if (typeof writeCharToSharedBuffer === 'function') {
-                return writeCharToSharedBuffer($0);
+        char chloc = buf[i] & 0177;  /* Mask off T20 parity */
+        
+        /* Write each character to output ring buffer using same approach as successful input */
+        int success = EM_ASM_INT({
+            // Use the shared WASM memory - same as working input code
+            var sharedMemory = Module.wasmMemory;
+            if (!sharedMemory || !sharedMemory.buffer) {
+                console.error('[DEBUG WASM] No shared WASM memory available in os_ttysout');
+                return 0;
             }
-            return 0;
-        }, (int)buf[i])) {
+            
+            var buffer = new Uint8Array(sharedMemory.buffer);
+            var view = new DataView(sharedMemory.buffer);
+            var baseOffset = $0;  // Output ring buffer offset
+            var char = $1;
+            var size = 4096;
+            
+            var write_pos = view.getUint32(baseOffset, true);
+            var read_pos = view.getUint32(baseOffset + 4, true);
+            
+            // Check if buffer full
+            var next_write_pos = (write_pos + 1) % size;
+            if (next_write_pos === read_pos) {
+                return 0; // Buffer full
+            }
+            
+            // Write character to data area (offset 16)
+            buffer[baseOffset + 16 + write_pos] = char;
+            
+            // Update write position
+            view.setUint32(baseOffset, next_write_pos, true);
+            
+            return 1; // Success
+        }, (uintptr_t)&shared_buffers->output, (int)chloc);
+        
+        if (!success) {
             return 0; // Failed to write character
         }
     }

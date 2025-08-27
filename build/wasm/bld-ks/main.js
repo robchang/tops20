@@ -193,16 +193,19 @@ class KLH10WebInterface {
             
             // Ring buffers will be at known offsets in WASM memory
             const RING_BUFFER_BASE = 0x10000;  // 64KB offset
-            const INPUT_RING_OFFSET = RING_BUFFER_BASE;
-            const OUTPUT_RING_OFFSET = RING_BUFFER_BASE + 4112;
             
-            // Create ring buffer managers that operate on WASM memory directly
-            this.inputRingBuffer = new RingBufferManager(this.wasmMemory.buffer, INPUT_RING_OFFSET);
-            this.outputRingBuffer = new RingBufferManager(this.wasmMemory.buffer, OUTPUT_RING_OFFSET);
+            // Ring buffers will be at known offsets in WASM memory  
+            // Create ONE ring buffer manager with the base offset
+            // It will handle both input (at base) and output (at base + 4112) internally
+            this.ringBufferManager = new RingBufferManager(this.wasmMemory.buffer, RING_BUFFER_BASE);
+            
+            // For compatibility, create aliases that point to the same manager
+            this.inputRingBuffer = this.ringBufferManager;
+            this.outputRingBuffer = this.ringBufferManager;
             
             console.log('Main: Created shared WASM memory:', this.wasmMemory.buffer.byteLength, 'bytes');
-            console.log('Main: Input ring at offset:', INPUT_RING_OFFSET.toString(16));
-            console.log('Main: Output ring at offset:', OUTPUT_RING_OFFSET.toString(16));
+            console.log('Main: Input ring at offset:', this.ringBufferManager.inputOffset.toString(16));
+            console.log('Main: Output ring at offset:', this.ringBufferManager.outputOffset.toString(16));
 
             // Create Web Worker for emulator with cache-busting
             const timestamp = Date.now();
@@ -333,16 +336,29 @@ class KLH10WebInterface {
     drainOutputBuffer() {
         if (!this.outputRingBuffer) return;
         
+        // Debug: Check if ring buffer has data
+        const hasData = this.outputRingBuffer.hasOutputData();
+        if (hasData) {
+            const writePos = this.outputRingBuffer.view.getUint32(this.outputRingBuffer.outputOffset, true);
+            const readPos = this.outputRingBuffer.view.getUint32(this.outputRingBuffer.outputOffset + 4, true);
+            console.log(`🔥 Main: Output ring buffer HAS DATA at offset=0x${this.outputRingBuffer.outputOffset.toString(16)} - write_pos=${writePos}, read_pos=${readPos}`);
+        }
+        
         let output = '';
+        let charCount = 0;
         while (this.outputRingBuffer.hasOutputData()) {
             const char = this.outputRingBuffer.readOutputChar();
             if (char) {
                 output += char;
+                charCount++;
             }
         }
         
         if (output.length > 0) {
+            console.log(`🔥 Main: Draining ${charCount} chars from output buffer: "${output}"`);
             this.terminal.write(output);
+        } else if (hasData) {
+            console.log(`🔥 Main: Ring buffer had data but no characters read - possible sync issue`);
         }
     }
 

@@ -2,7 +2,7 @@
 */
 /* $Id: dvcty.c,v 2.4 2002/03/21 09:47:52 klh Exp $
 */
-/*  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright ï¿½ 1992, 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -103,11 +103,13 @@ cty_incheck(void)
 	fprintf(stderr, "[cty_incheck: isigs %d nullsigs %d inp %d]\n",
 		feiosiginps, feiosignulls, cpu.fe.fe_ctyinp);
 
+
     if ((inpend = cpu.fe.fe_ctyinp) > 0		/* See if any input waiting */
       || (inpend = fe_ctyintest()) > 0) {	/* Think not, but check OS */
 
 	if (cpu.fe.fe_debug)
 	    fprintf(stderr, "[cty_incheck: %d inp]", inpend);
+
 
 	/* TTY input available!  See if FE needs it */
 	if (cpu.fe.fe_mode == FEMODE_CMDRUN) {
@@ -120,6 +122,9 @@ cty_incheck(void)
 	** again later to see if 10 is accepting input.
 	*/
 #if KLH10_CPU_KS
+#ifdef __EMSCRIPTEN__
+	printf("[DEBUG WASM] cty_incheck calling cty_sin() with %d chars\n", inpend);
+#endif
 	if (((inpend =    cty_sin(inpend)) > 0)
 #elif KLH10_CPU_KL
 	if (((inpend = dte_ctysin(inpend)) > 0)
@@ -183,13 +188,29 @@ cty_sin(int cnt)
     register vmptr_t vp;
     register int ch, oldch;
 
+
     vp = vm_physmap(FECOM_CTYIN);
     oldch = vm_pgetrh(vp);		/* See if ready for next char */
+    
+    
     if (oldch & 0400)
         return cnt;
 
-    if ((ch = fe_ctyin()) < 0)		/* Get single char */
+    if ((ch = fe_ctyin()) < 0) {		/* Get single char */
+#ifdef __EMSCRIPTEN__
+        printf("[DEBUG WASM] cty_sin() fe_ctyin() returned -1 (no char)\n");
+#endif
 	return 0;			/* None left */
+    }
+#ifdef __EMSCRIPTEN__
+    printf("[DEBUG WASM] cty_sin() fe_ctyin() returned char='%c' (code %d)\n", 
+           (ch >= 32 && ch <= 126) ? ch : '?', ch);
+#endif
+
+#ifdef __EMSCRIPTEN__
+    printf("[DEBUG WASM] cty_sin: got char='%c' (code %d), writing to PDP-10 memory and sending interrupt\n", 
+           (ch >= 32 && ch <= 126) ? ch : '?', ch);
+#endif
 
     if (cpu.fe.fe_ctydebug)
 	fprintf(stderr, "[CTYI: %o]", ch);

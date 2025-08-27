@@ -145,10 +145,8 @@ class EmulatorWorker {
                     onRuntimeInitialized: async () => {
                         this.Module = self.Module;
                         
-                        // Set up ring buffers in WASM memory
-                        setTimeout(() => {
-                            this.setupWasmRingBuffers();
-                        }, 10);
+                        // Set up ring buffers in WASM memory IMMEDIATELY before anything else
+                        this.setupWasmRingBuffers();
                         
                         // Create empty config file in virtual file system
                         // KLH10 processes each line as a command, so we want an empty file
