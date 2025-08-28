@@ -277,6 +277,23 @@ ni20_cono(struct device *d, h10_t erh)
     /* Update basic control bits */
     ni->ni_cond = (ni->ni_cond & ~0177777) | (erh & 0177777);
     
+    /* Handle Command Queue Available - TOPS-20 sets this when it puts commands in the queue */
+    if (erh & NI20CO_CQA) {
+        /* TOPS-20 has queued commands (RDNSA, LDPTT, LDMCAT) and expects responses.
+         * For our stub, we simulate immediate successful processing of all commands
+         * and set RQA to indicate responses are ready.
+         */
+        if (ni->ni_state >= 2) {  /* Only process commands if microprocessor is running */
+            ni->ni_cond |= NI20CI_RQA;  /* Set Response Queue Available */
+            /* Also clear CQA since we "processed" the commands */
+            ni->ni_cond &= ~NI20CO_CQA;
+            /* The real NI20 would also signal a PI when responses are ready */
+            fprintf(stderr, "📝 NI20: CQA processed - commands completed (RQA set, CQA cleared)\n");
+        } else {
+            fprintf(stderr, "⚠️ NI20: CQA received but microprocessor not running\n");
+        }
+    }
+    
     /* Handle enable/disable */
     if (erh & NI20CO_ENA) {
         ni->ni_lhcond |= NI20CI_ECP;  /* Set Enable Complete */
@@ -291,7 +308,7 @@ ni20_cono(struct device *d, h10_t erh)
     /* Clear specific error/status bits that are cleared by CONO */
     if (erh & NI20CI_RQA) {
         ni->ni_cond &= ~NI20CI_RQA;  /* Clear Response Queue Available */
-        /* RQA clear debug disabled */
+        fprintf(stderr, "✅ NI20: RQA cleared - responses processed\n");
     }
     if (erh & NI20CI_FQE) {
         ni->ni_cond &= ~NI20CI_FQE;  /* Clear Free Queue Error */

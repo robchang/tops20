@@ -378,12 +378,24 @@ class KLH10WebInterface {
                         const hours = now.getHours().toString().padStart(2, '0');
                         const minutes = now.getMinutes().toString().padStart(2, '0');
                         const dateTime = `${day}-${month}-${year} ${hours}${minutes}`;
-                        bootCommands.push(dateTime);
+                        bootCommands.push({ command: dateTime, noCr: false });
                     } else if (trimmed === '{ctrl-c}') {
                         // Send CTRL-C (ASCII 3)
-                        bootCommands.push('\x03');
+                        bootCommands.push({ command: '\x03', noCr: false });
                     } else {
-                        bootCommands.push(trimmed);
+                        // Process {esc} and {nocr} inline within commands
+                        let processedCommand = trimmed;
+                        processedCommand = processedCommand.replace(/\{esc\}/g, '\x1b'); // ESC character (ASCII 27)
+                        
+                        // Handle {nocr} - mark command to not add \r
+                        const hasNoCr = processedCommand.includes('{nocr}');
+                        processedCommand = processedCommand.replace(/\{nocr\}/g, ''); // Remove {nocr} markers
+                        
+                        // Store command with nocr flag
+                        bootCommands.push({
+                            command: processedCommand,
+                            noCr: hasNoCr
+                        });
                     }
                 }
             }
@@ -396,17 +408,27 @@ class KLH10WebInterface {
             
             // Send each command with a delay
             let delay = 0;
-            bootCommands.forEach((command, index) => {
+            bootCommands.forEach((commandEntry, index) => {
                 setTimeout(() => {
+                    // Handle both string commands and object commands
+                    let command, noCr;
+                    if (typeof commandEntry === 'string') {
+                        command = commandEntry;
+                        noCr = false;
+                    } else {
+                        command = commandEntry.command;
+                        noCr = commandEntry.noCr;
+                    }
+                    
                     // Write command directly to WASM memory ring buffer
-                    const fullCommand = command + '\r';
+                    const fullCommand = noCr ? command : command + '\r';
                     for (let i = 0; i < fullCommand.length; i++) {
                         this.inputRingBuffer.writeInputChar(fullCommand[i]);
                     }
                     
                     // Show what we're sending if in command mode
                     if (this.inRuncmdMode) {
-                        this.terminal.write(command + '\r\n');
+                        this.terminal.write(command + (noCr ? '' : '\r\n'));
                     }
                     
                     // After the first few automatic commands, show instructions
