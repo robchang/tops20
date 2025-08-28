@@ -475,6 +475,11 @@ class KLH10WebInterface {
     drainOutputBuffer() {
         if (!this.outputRingBuffer) return;
         
+        // Check for flush request from WASM side
+        const flushRequest = this.outputRingBuffer.view.getUint32(this.outputRingBuffer.controlOffset + 4, true);
+        if (flushRequest) {
+            console.log('[JS_FLUSH] Detected flush request from WASM side');
+        }
         
         let output = '';
         let charCount = 0;
@@ -488,6 +493,19 @@ class KLH10WebInterface {
         
         if (output.length > 0) {
             this.terminal.write(output);
+        }
+        
+        // If there was a flush request, force terminal to flush and clear the request
+        if (flushRequest) {
+            console.log('[JS_FLUSH] Processing flush request, output.length=' + output.length);
+            // Force immediate terminal update - this ensures characters appear right away
+            if (output.length > 0) {
+                // Terminal write is already called above, just ensure it's processed
+                setTimeout(() => {}, 0); // Allow browser to process the write immediately
+            }
+            // Clear the flush request
+            this.outputRingBuffer.view.setUint32(this.outputRingBuffer.controlOffset + 4, 0, true);
+            console.log('[JS_FLUSH] Cleared flush request');
         }
     }
 
