@@ -1,0 +1,108 @@
+# TOPS-20 Boot Commands for KLH10 WebAssembly
+# Based on doc/kst20.txt installation sequence
+# Use {date-time} variable for automatic date/time insertion
+# Use {ctrl-c} to send CTRL-c
+
+# 0. GO
+go
+
+# 1. Load monitor from tape
+/l
+
+# 2. Start monitor at filesystem creation entry point
+# Use /g143 for new filesystem, /g147 if filesystem already exists
+/g143
+
+# Wait for prompts, then respond to filesystem questions:
+# (These will be prompted by the system, not sent automatically)
+
+# DO YOU WANT TO REPLACE THE FILE SYSTEM ON THE PUBLIC STRUCTURE? 
+Y
+
+# DO YOU WANT TO DEFINE THE PUBLIC STRUCTURE?
+Y
+
+# HOW MANY PACKS ARE IN THIS STRUCTURE:
+1
+
+# ON WHICH "CHANNEL,UNIT" IS LOGICAL PACK # 0 MOUNTED:
+0,-1,0
+
+# DO YOU WANT DEFAULT SWAPPING STRUCTURE
+Y
+#DO YOU WANT THE DEFAULT SIZE FRONT END FILE SYSTEM?
+Y
+
+#DO YOU WANT THE DEFAULT SIZE BOOTSTRAP AREA?
+Y
+
+#DO YOU WANT TO ENABLE PASSWORD ENCRYPTION FOR THE SYSTEM STRUCTURE? 
+Y
+
+#WHAT IS THE NAME OF THIS STRUCTURE? 
+PS
+
+#DO YOU WANT TO WRITE A SET OF PROTOTYPE BAT BLOCKS?
+Y
+
+# ENTER CURRENT DATE AND TIME:
+#{date-time}
+
+# YOU HAVE ENTERED [...] IS THIS CORRECT (Y,N)
+#Y
+
+# WHY RELOAD?
+NEW
+
+#CTRL-C
+{ctrl-c}
+
+# # Now into Loading tapes
+#MX>GET FILE MTA0:	;;; Type just "g" then "mta0:" and CR.
+gmta0:
+
+#MX>GET FILE MTA0:	;;; Repeat, to read EXEC.EXE from tape.
+gmta0:
+
+#MX>START		;;; Type just "s" then CR.
+s
+
+#  TOPS-20 Command processor 5.1(1354)
+# @TER NO RAI		;;; Success!  Let's stop uppercasing our input,
+TER NO RAI 
+
+# @ena			;;; and must get enabled.
+ena 
+
+# $run mta0:		;;; Now read and start DLUSER.EXE from tape.
+run mta0:
+
+# DLUSER>load mta0:	;;; Now read DLUSER data to set up directories.
+load mta0:
+
+# DLUSER>exit		;;; Get out.
+exit
+
+# $run mta0:		;;; Now read and start DUMPER.EXE from tape.
+run mta0:
+
+# DUMPER>tape mta0:	;;; Point to tape drive and start restoring files!
+tape mta0:
+
+# Restore <system>
+restore <*>*.*.* <system>*.*.* 
+			 
+# Second set to <subsys>
+restore <*>*.*.* <subsys>*.*.* 
+
+# Third set 
+restore <*>*.*.*  <*>*.*.* 
+
+# Exit DUMPER
+exit 
+
+# List directory!
+conn <system>
+vdir 
+
+ 

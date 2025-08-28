@@ -29,3 +29,6 @@ tmp*/*
 *.wasm
 **/*.wasm
 
+# Panda distribution documentation
+Panda-doc/
+

@@ -1,0 +1,14 @@
+# Panda TOPS-20 Boot Commands (KS10 Hybrid)
+# Attempting to boot Panda TOPS-20 on KS10 emulator
+
+# 1. Start the emulator
+go
+
+# 2. Boot from tape (standard KS procedure)
+/l
+
+# 3. Try Panda startup address
+/g147
+
+# Note: If this fails, Panda TOPS-20 may require true KL10 architecture
+# In that case, we'll need to use RH11 controllers with standard TOPS-20

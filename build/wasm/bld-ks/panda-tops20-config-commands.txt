@@ -1,0 +1,16 @@
+# Panda TOPS-20 Configuration for KS10 Emulator (Hybrid)
+# Attempting to run Panda TOPS-20 on KS10 architecture
+
+# Define RH11 controllers (KS10 style) 
+devdef rh0  ub1   rh11	addr=776700 br=6 vec=254
+devdef rh1  ub3   rh11	addr=772440 br=6 vec=224
+
+# Define disk drive (RP06 format - KS10 compatible)
+devdef dsk0 rh0.0 rp	type=rp06 format=dbd9 path=PANDA-RP06.0-dbd9 iodly=0
+
+# Define tape drive for Panda tape
+devdef mta0 rh1.0 tm03	fmtr=tm03 type=tu45
+devmount mta0 panda.tap
+
+# Try KS10 bootstrap first (compatible with more systems)
+load smmtbt-k.sav

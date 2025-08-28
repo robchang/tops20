@@ -1,6 +1,6 @@
 # KLH10 Makefile for unknown-emscripten on wasm32
 #
-#  Copyright © 2016 Olaf 'Rhialto' Seibert
+#  Copyright ï¿½ 2016 Olaf 'Rhialto' Seibert
 #  All Rights Reserved
 #
 #  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -23,7 +23,7 @@ CPPFLAGS =  -I$(BLDSRC) -I$(SRC)
 CFLAGS_LINT = -ansi -pedantic -Wall -Wshadow \
                 -Wstrict-prototypes -Wmissing-prototypes \
                 -Wmissing-declarations -Wredundant-decls
-LDFLAGS = 
+LDFLAGS = -sINITIAL_MEMORY=134217728 -sALLOW_MEMORY_GROWTH=0 -sALLOW_TABLE_GROWTH=1 -sSTACK_SIZE=8388608 -sEXPORTED_RUNTIME_METHODS=callMain,FS,stringToUTF8,UTF8ToString,HEAPU8 -sEXPORTED_FUNCTIONS=_main,_malloc,_free -sSAFE_HEAP=0 -sASSERTIONS=0
 LIBS = 
 CPULIBS =  
 NETLIBS = 
@@ -44,18 +44,21 @@ CONFFLAGS_AUX = -DKLH10_I_CIRC=1
 ##	Specific KLH10 configuration
 ##
 
-# Standard setup for KL (TOPS-10 and TOPS-20)
-#
+# Minimal KL10 setup for WebAssembly (following WASM_INSTRUCTIONS.md simplifiers)
+# Removed networking (DPNI20) per "Networking: Not needed" guideline
 CONFFLAGS = -DKLH10_CPU_KLX=1	\
 	    -DKLH10_SYS_T20=1	\
 	    -DKLH10_EVHS_INT=1	\
-		    -DKLH10_DEV_DPNI20=1 \
-		    -DKLH10_DEV_DPTM03=1 \
-		    -DKLH10_DEV_DPRPXX=1 \
-	    -DKLH10_MEM_SHARED=1	\
-	    -DKLH10_RTIME_OSGET=1	\
-	    -DKLH10_ITIME_INTRP=1	\
-	    -DKLH10_CTYIO_INT=1	\
+		    -DKLH10_DEV_TM03=1 \
+		    -DKLH10_DEV_DPTM03=0 \
+		    -DKLH10_DEV_RPXX=1 \
+		    -DKLH10_DEV_DPRPXX=0 \
+	    -DKLH10_DEV_NI20=1 \
+	    -DKLH10_DEV_DPNI20=0 \
+	    -DKLH10_MEM_SHARED=1 \
+	    -DPAG_PABITS=22 \
+	    $(TSYNCFLAGS) \
+	    $(DSYNCFLAGS) \
 	    -DKLH10_APRID_SERIALNO=3600 \
 	    -DKLH10_CLIENT=\"MyKL\"
 
@@ -68,6 +71,7 @@ all base-kl:	kn10-kl DPROCS_KL ALL_UTILS
 
 # Modules needed for KL10 version.
 
+# KL10 objects for WebAssembly - includes NI20 stub to avoid LAPRBF warnings
 OFILES_KL = klh10.o prmstr.o fecmd.o feload.o wfio.o osdsup.o \
 	kn10cpu.o kn10pag.o kn10clk.o opdata.o kn10ops.o \
 	inmove.o inhalf.o inblsh.o intest.o \
@@ -76,11 +80,19 @@ OFILES_KL = klh10.o prmstr.o fecmd.o feload.o wfio.o osdsup.o \
 	dvcty.o  dvdte.o	\
 	vdisk.o  dvrpxx.o dvrh20.o	\
 	vmtape.o dvtm03.o	\
-	dvni20.o dpsup.o	\
+	dvni20_stub.o \
+	dpsup.o \
 	dvhost.o dvlites.o
 
-kn10-kl: $(OFILES_KL)
-	$(LINKER) $(LDFLAGS) $(LDOUTF) kn10-kl $(OFILES_KL) $(LIBS) $(CPULIBS)
+# Special rule for NI20 stub
+dvni20_stub.o: dvni20_stub.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(CONFFLAGS) -c dvni20_stub.c
+
+kn10-kl.js: $(OFILES_KL) klh10_input_c.js
+	$(LINKER) $(LDFLAGS) $(LDOUTF) kn10-kl.js $(OFILES_KL) $(LIBS) $(CPULIBS)
+
+# Keep the old target name for compatibility
+kn10-kl: kn10-kl.js
 
 base-ks:
 	@echo "base-ks is not built in this directory."
@@ -109,7 +121,7 @@ lint-kl:
 # KLH10 Makefile.
 # $Id: Makefile.mk,v 2.6 2002/03/21 09:44:05 klh Exp $
 #
-#  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+#  Copyright ï¿½ 1992, 1993, 2001 Kenneth L. Harrenstien
 #  All Rights Reserved
 #
 #  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -256,7 +268,8 @@ CONFS = cenv.h klh10.h word10.h wfio.h fecmd.h feload.h \
 
 # Device Processes (DPs) built concurrently with KN10
 
-DPROCS_KL = dprpxx dptm03 dpni20
+# Minimal device processes for WebAssembly - removed networking (dpni20)
+DPROCS_KL = dprpxx dptm03
 DPROCS_KS = dprpxx dptm03
 DPROCS_KSITS = dprpxx dptm03 dpimp dpchaos
 
