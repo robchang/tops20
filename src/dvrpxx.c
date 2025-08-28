@@ -2,7 +2,7 @@
 */
 /* $Id: dvrpxx.c,v 2.4 2002/05/21 09:52:07 klh Exp $
 */
-/*  Copyright � 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright � 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -76,7 +76,7 @@ static int decosfcclossage;
 #endif
 
 
-int rp_format = VDK_FMT_RAW;	/* VDK_DFxxx value */
+int rp_format = 2;	/* VDK_FMT_DBD9 - Default to DBD9 for WebAssembly compatibility */
 			/* External needed until becomes config param */
 
 #if KLH10_DEV_DPRPXX	/* Max I/O operation in bytes */
@@ -726,6 +726,9 @@ rpxx_init(struct device *d, FILE *of)
     }
 
     /* Set up config vars */
+    /* DEBUG: Show format assignment */
+    printf("🔩 RP_CONFIG: Setting rp->rp_vdk.dk_format = rp->rp_fmt = %d\n", rp->rp_fmt);
+    fflush(stdout);
     rp->rp_vdk.dk_format = rp->rp_fmt;
     rp->rp_vdk.dk_filename = rp->rp_spath;
     rp->rp_vdk.dk_dtype = rp->rp_dcf.dcf_type;
@@ -991,6 +994,9 @@ rp_xmount(register struct rpdev *rp)
 #else
     int res;
 
+    /* DEBUG: Show format assignment before mount */
+    printf("🔩 RP_XMOUNT: Setting rp->rp_vdk.dk_format = rp->rp_fmt = %d\n", rp->rp_fmt);
+    fflush(stdout);
     rp->rp_vdk.dk_format = rp->rp_fmt;
     res = vdk_mount(&(rp->rp_vdk), rp->rp_spath, rp->rp_iswrite);
 

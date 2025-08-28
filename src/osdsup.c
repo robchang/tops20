@@ -125,10 +125,7 @@ static int ring_buffer_available_data(struct klh10_ring_buffer *rb) {
             available = size - (read_pos - write_pos);
         }
         
-        // Debug when we find data to verify buffer access
-        if (available > 0) {
-            console.log('[DEBUG WASM] FOUND DATA using sharedMemory.buffer! write_pos=' + write_pos + ', read_pos=' + read_pos + ', available=' + available);
-        }
+        // Debug output disabled
         
         return available;
     }, (uintptr_t)rb);
@@ -180,8 +177,7 @@ static int ring_buffer_read_char(struct klh10_ring_buffer *rb) {
         var next_read_pos = (read_pos + 1) % size;
         view.setUint32(baseOffset + 4, next_read_pos, true);
         
-        console.log('[DEBUG WASM] Using sharedMemory.buffer - read char ' + String.fromCharCode(char) + 
-                   ' (code ' + char + '), read_pos ' + read_pos + ' -> ' + next_read_pos);
+        // Debug output disabled
         
         return char;
     }, (uintptr_t)rb);
@@ -997,10 +993,7 @@ os_ttyout(int ch)
         // Update write position
         view.setUint32(baseOffset, next_write_pos, true);
         
-        // Show output chars (but only printable ones to reduce spam)
-        if (char >= 32 && char <= 126) {
-            console.log('🔥 WASM: Wrote char=' + String.fromCharCode(char) + ' to output ring at offset=0x' + baseOffset.toString(16) + ', write_pos=' + write_pos + ', next_write_pos=' + next_write_pos);
-        }
+        // Debug output disabled
         
         return 1; // Success
     }, (uintptr_t)&shared_buffers->output, (int)chloc);
@@ -1179,9 +1172,7 @@ os_ttycmline(char *buffer, int size)
             continue; /* Should not happen, but be safe */
         }
         
-        EM_ASM({
-            console.log('[DEBUG WASM] os_ttycmline: GOT CHARACTER: ' + String.fromCharCode($0) + ' (code ' + $0 + ')');
-        }, ch);
+        // Debug output disabled
         
         /* Handle the character */
         if (ch == '\r' || ch == '\n') {

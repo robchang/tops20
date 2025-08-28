@@ -32,3 +32,7 @@ tmp*/*
 # Panda distribution documentation
 Panda-doc/
 
+# Node.js dependencies
+node_modules/
+package-lock.json
+

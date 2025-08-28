@@ -1718,7 +1718,16 @@ fc_devshow(struct cmd_s *cm)
 {
     /* Pass first token on line.  OK if NULL. */
     (void) cmdargs_n(cm, 1);
+    
+    /* DEBUG: Confirm devshow command is being called */
+    printf("DEBUG: devshow command called with arg='%s'\n", 
+           cm->cmd_argv[0] ? cm->cmd_argv[0] : "(null)");
+    fflush(stdout);
+    
     (void) dev_show(stdout, cm->cmd_argv[0], cm->cmd_rdp);
+    
+    /* DEBUG: Force output flush */
+    fflush(stdout);
 }
 
 #if KLH10_EVHS_INT

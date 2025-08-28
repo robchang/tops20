@@ -52,14 +52,92 @@
 # define VDK_SECTOR_SIZE 128  /* Default for all known DEC disks */
 #endif
 
+/* Ensure format constants are defined for WebAssembly */
+#ifndef VDK_FMT_RAW
+# define VDK_FMT_RAW  0
+# define VDK_FMT_RARE 1  
+# define VDK_FMT_DBD9 2
+#endif
+
+/* DBD9 format conversion functions (copied from Unix section) */
+static void
+cvtfr_dbd9(register w10_t *wp,
+	   register int wcnt,
+	   register unsigned char *ucp)
+{
+    register w10_t w;
+    register int dwcnt = wcnt >> 1;
+
+    for (; --dwcnt >= 0; ucp += 9) {
+	LRHSET(w,
+	    (((ucp[0]&0377)<<10) | ((ucp[1]&0377)<<2) | ((ucp[2]>>6)&03)),
+	    (((ucp[2]&077)<<12)  | ((ucp[3]&0377)<<4) | ((ucp[4]>>4)&017)));
+	*wp++ = w;
+	LRHSET(w,
+	    (((ucp[4]&017)<<14) | ((ucp[5]&0377)<<6) | ((ucp[6]>>2)&077)),
+	    (((ucp[6]&03)<<16)  | ((ucp[7]&0377)<<8) | (ucp[8]&0377)));
+	*wp++ = w;
+    }
+
+    /* Handle odd word for generality */
+    if (wcnt & 01) {
+	LRHSET(w,
+	    (((ucp[0]&0377)<<10) | ((ucp[1]&0377)<<2) | ((ucp[2]>>6)&03)),
+	    (((ucp[2]&077)<<12)  | ((ucp[3]&0377)<<4) | ((ucp[4]>>4)&017)));
+	*wp++ = w;
+    }
+}
+
+static void
+cvtto_dbd9(register unsigned char *ucp,
+	   register w10_t *wp,
+	   register int wcnt)
+{
+    register w10_t w, w2;
+    register int dwcnt = wcnt >> 1;
+
+    for (; --dwcnt >= 0; ucp += 9) {
+	w = *wp++;  w2 = *wp++;
+	ucp[0] = (LHGET(w) >> 10) & 0377;
+	ucp[1] = (LHGET(w) >>  2) & 0377;
+	ucp[2] = ((LHGET(w) & 03) << 6) | ((RHGET(w) >> 12) & 077);
+	ucp[3] = (RHGET(w) >> 4) & 0377;
+	ucp[4] = ((RHGET(w) & 017) << 4) | ((LHGET(w2) >> 14) & 017);
+	ucp[5] = (LHGET(w2) >> 6) & 0377;
+	ucp[6] = ((LHGET(w2) & 077) << 2) | ((RHGET(w2) >> 16) & 03);
+	ucp[7] = (RHGET(w2) >> 8) & 0377;
+	ucp[8] = RHGET(w2) & 0377;
+    }
+
+    /* Handle odd word for generality */
+    if (wcnt & 01) {
+	w = *wp++;
+	ucp[0] = (LHGET(w) >> 10) & 0377;
+	ucp[1] = (LHGET(w) >>  2) & 0377;
+	ucp[2] = ((LHGET(w) & 03) << 6) | ((RHGET(w) >> 12) & 077);
+	ucp[3] = (RHGET(w) >> 4) & 0377;
+	ucp[4] = (RHGET(w) & 017) << 4;
+    }
+}
+
 int vdk_init(struct vdk_unit *d, void (*errhdlr)(struct vdk_unit *, char *), char *arg) {
-    /* Initialize virtual disk unit */
-    memset((char *)d, 0, sizeof(*d)); /* Clear entire structure like Unix version */
+    /* Initialize virtual disk unit - do NOT zero format field! */
+    
+    /* DEBUG: Show what format we received */
+    printf("🔧 VDK_INIT: dk_format=%d, dk_nwds=%u (before init)\n", d->dk_format, d->dk_nwds);
+    fflush(stdout);
+    
     d->dk_fd = -1;
     d->dk_errhan = errhdlr;
     d->dk_errarg = arg;
     d->dk_err = 0;
     d->dk_filename = NULL;
+    /* Note: dk_format, dk_nwds, etc. are set by device config before init */
+    
+    /* DEBUG: Show what format we have after init */
+    printf("🔧 VDK_INIT: dk_format=%d, dk_nwds=%u (after init)\n", d->dk_format, d->dk_nwds);
+    fflush(stdout);
+    
     return 1; /* Success - must return TRUE like Unix version */
 }
 
@@ -67,6 +145,11 @@ int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
     /* Mount disk image using Emscripten MEMFS - following Unix version logic */
     struct stat st;
     size_t cvtsiz;
+    
+    /* DEBUG: Show mount parameters */
+    printf("🗂️ VDK_MOUNT: path='%s', wrtf=%d, dk_format=%d, dk_nwds=%u\n", 
+           path, wrtf, d->dk_format, d->dk_nwds);
+    fflush(stdout);
 
     /* Validate device is initialized */
     if (!d->dk_devname[0]) {
@@ -78,17 +161,26 @@ int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
     if ((0 <= d->dk_format) && (d->dk_format < VDK_FMT_N)) {
         cvtsiz = 1024 * sizeof(w10_t); /* Default buffer size */
         
-        /* For VDK_FMT_RAW (RP06 default): bytesec = nwds * sizeof(w10_t) */
+        /* Calculate bytes per sector based on format - FIXED to match Unix version */
         if (d->dk_format == VDK_FMT_RAW) {
-            d->dk_bytesec = d->dk_nwds * sizeof(w10_t);
+            d->dk_bytesec = d->dk_nwds * sizeof(w10_t); /* RAW: 2*sizeof(w10_t) per double-word */
+        } else if (d->dk_format == VDK_FMT_DBD9) {
+            d->dk_bytesec = (d->dk_nwds * 9) / 2; /* DBD9: 9 bytes per double-word */
         } else {
-            /* Other formats would need format table lookup - not implemented for WASM */
-            d->dk_bytesec = d->dk_nwds * 9; /* Approximate for non-raw formats */
+            /* Other formats - add as needed */
+            d->dk_bytesec = d->dk_nwds * 9; /* Default fallback */
         }
         
-        /* RAW format needs no conversion */
-        d->dk_fmt2wds = NULL;
-        d->dk_wds2fmt = NULL;
+        /* Set conversion functions based on format */
+        if (d->dk_format == VDK_FMT_DBD9) {
+            /* Use DBD9 conversion functions from Unix section */
+            d->dk_fmt2wds = cvtfr_dbd9;  /* Convert FROM DBD9 format TO words */
+            d->dk_wds2fmt = cvtto_dbd9;  /* Convert FROM words TO DBD9 format */
+        } else {
+            /* RAW format needs no conversion */
+            d->dk_fmt2wds = NULL;
+            d->dk_wds2fmt = NULL;
+        }
         
     } else {
         if (d->dk_errhan) d->dk_errhan(d, "vdk_mount: Unknown disk format");
@@ -144,6 +236,13 @@ int vdk_mount(struct vdk_unit *d, char *path, int wrtf) {
         return 0; /* FALSE */
     }
     
+    /* DEBUG: Confirm disk file opened successfully */
+    printf("✅ DISK: Successfully opened image file '%s' (fd=%d, %s mode)\n", 
+           path, d->dk_fd, wrtf ? "READ/WRITE" : "READ-ONLY");
+    printf("📊 DISK: Format=%d, dk_nwds=%u, dk_bytesec=%u (bytes per sector)\n",
+           d->dk_format, d->dk_nwds, d->dk_bytesec);
+    fflush(stdout);
+    
     /* Store write flag and filename */
     d->dk_iswrite = wrtf;
     if (d->dk_filename) free(d->dk_filename);
@@ -166,18 +265,36 @@ int vdk_unmount(struct vdk_unit *d) {
 }
 
 int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
-    /* Read sectors from disk - following Unix version exactly */
+    /* Read sectors from disk with format conversion support */
     off_t daddr;
     size_t bcnt;
     ssize_t ndone = 0;
+    static unsigned char temp_buf[8192];  /* Temp buffer for format conversion */
+    unsigned char *read_buf;
     
     d->dk_err = 0;
     
     if (d->dk_fd < 0) return 0; /* Not mounted */
     
-    /* RAW format (no conversion) - matches Unix version logic */
-    daddr = ((off_t)secaddr) * VDK_SECTOR_SIZE * sizeof(w10_t);
-    bcnt = nsec * VDK_SECTOR_SIZE * sizeof(w10_t);
+    /* Calculate disk byte address using proper sector size */
+    daddr = ((off_t)secaddr) * d->dk_bytesec;
+    bcnt = nsec * d->dk_bytesec;
+    
+    /* Determine read buffer based on format conversion needs */
+    if (d->dk_fmt2wds == NULL) {
+        /* RAW format - read directly into word buffer */
+        read_buf = (unsigned char*)wp;
+    } else {
+        /* Non-RAW format - read into temp buffer for conversion */
+        read_buf = temp_buf;
+        if (bcnt > sizeof(temp_buf)) {
+            printf("❌ VDK_READ: conversion buffer too small (%zu > %zu)\n", bcnt, sizeof(temp_buf));
+            d->dk_err = ENOMEM;
+            return 0;
+        }
+    }
+    
+    /* Debug output removed for performance */
     
     /* Seek to position */
     if (lseek(d->dk_fd, daddr, SEEK_SET) != daddr) {
@@ -186,20 +303,26 @@ int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
         return 0;
     }
     
-    /* Read data */
-    ndone = read(d->dk_fd, (char*)wp, bcnt);
+    /* Read data into appropriate buffer */
+    ndone = read(d->dk_fd, (char*)read_buf, bcnt);
     if (ndone < 0) {
         d->dk_err = errno;
         if (d->dk_errhan) d->dk_errhan(d, "vdk_read: read failed");
         return 0;
     }
     
-    /* Handle sparse files - fill unread words with zeros */
+    /* Handle sparse files - fill unread bytes with zeros */
     if (ndone < bcnt) {
-        memset(((char *)wp) + ndone, 0, bcnt - ndone);
+        memset(read_buf + ndone, 0, bcnt - ndone);
     }
     
-    return nsec; /* Always return full sector count for RAW format */
+    /* Apply format conversion if needed */
+    if (d->dk_fmt2wds != NULL) {
+        /* Convert from disk format to PDP-10 words */
+        (*d->dk_fmt2wds)(wp, nsec * VDK_NWDS(d), read_buf);
+    }
+    
+    return nsec; /* Always return full sector count */
 }
 
 int vdk_write(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
@@ -212,9 +335,11 @@ int vdk_write(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
     
     if (d->dk_fd < 0) return 0; /* Not mounted */
     
-    /* RAW format (no conversion) - matches Unix version logic */
-    daddr = ((off_t)secaddr) * VDK_SECTOR_SIZE * sizeof(w10_t);
-    bcnt = nsec * VDK_SECTOR_SIZE * sizeof(w10_t);
+    /* Calculate disk byte address using proper sector size */
+    daddr = ((off_t)secaddr) * d->dk_bytesec;
+    bcnt = nsec * d->dk_bytesec;
+    
+    /* Debug output removed for performance */
     
     /* Seek to position */
     if (lseek(d->dk_fd, daddr, SEEK_SET) != daddr) {
@@ -239,7 +364,14 @@ int vdk_write(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
     
     return nsec; /* Return full sector count written */
 }
-#else
+
+#endif /* __EMSCRIPTEN__ */
+
+/* ================================================================ */
+/* Original Unix Implementation (not used for WebAssembly) */
+/* ================================================================ */
+
+#if !defined(__EMSCRIPTEN__)
 
 #ifdef RCSID
  RCSID(vdisk_c,"$Id: vdisk.c,v 2.5 2002/05/21 09:47:06 klh Exp $")

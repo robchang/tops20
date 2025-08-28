@@ -1,23 +1,27 @@
-# Sample KLH10.INI for initial installation (exact copy of inst-klt20.ini)
-
-# Define basic device config - one DTE, one disk, one tape.
-# Use two RH20s because TOPS-10 doesn't like mixing disk and tape on
-# the same controller (TOPS-20 is fine).
-
+; Define basic device config - one DTE, one disk, one tape
 devdef dte0 200   dte	master
 devdef rh0  540   rh20
 devdef rh1  544   rh20
-devdef dsk0 rh0.0 rp	type=rp06 format=dbd9
+devdef dsk0 rh0.0 rp	type=rp07 format=dbd9
 devdef mta0 rh1.0 tm03	type=tu45
 
-# Need KLNI to avoid LAPRBF BUGCHKs - use valid address if known
-# (using stub implementation for WebAssembly)
-devdef ni0 564 ni20 ipaddr=127.0.0.1 debug=1
+; Set Ethernet address
+devdef ni0 564 ni20 ipaddr=127.0.0.1
 
-# Mount installation tape (no ucode or boot to skip)
-devmount mta0 bb-h137f-bm.tap
+; Define the idle device on 700
+devdef idler 700 host
 
-# Load tape bootstrap directly
-load mtboot.sav
+; Set switch register
+set sw=254200,,147
 
-# Now ready to GO
+; Set console lights I/O base register
+;Uncomment the following line if you have a Panda display.
+;lights 378
+
+; Mount disk image file to disk drive
+devmount dsk0 RH20.RP07.1
+
+; Load disk bootstrap directly
+load boot.sav
+
+; Ready to GO
