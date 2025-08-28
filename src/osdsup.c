@@ -1023,14 +1023,8 @@ os_ttyout(int ch)
 int
 os_ttysout(char *buf, int len)		/* Note length is signed int */
 {
-#if CENV_SYS_UNIX || CENV_SYS_MAC
-# if CENV_USE_COMM_TOOLBOX
-    /* Event check to allow stopping runaway typeout on Mac */
-    CheckEvents(FALSE);
-# endif
-    return write(1, buf, (size_t)len) == len;
-
-#elif CENV_SYS_EMSCRIPTEN
+    EM_ASM_({ console.log('[OS_TTYSOUT] ENTRY: len=' + $0 + ' buf="' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
+#if CENV_SYS_EMSCRIPTEN
     /* Write string output directly to output ring buffer using shared WASM memory */
     if (!shared_buffers) {
         return 0;  /* Ring buffer not initialized */
@@ -1077,7 +1071,23 @@ os_ttysout(char *buf, int len)		/* Note length is signed int */
             return 0; // Failed to write character
         }
     }
+    
+    /* Set flush request to ensure immediate display of string output */
+    if (shared_buffers && len > 0) {
+        shared_buffers->flush_request = 1;
+        EM_ASM_({ console.log('[OS_TTYSOUT] Set flush_request=1 for ' + $0 + ' chars: "' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
+    } else {
+        EM_ASM_({ console.log('[OS_TTYSOUT] No flush request set (shared_buffers=' + $0 + ', len=' + $1 + ')'); }, shared_buffers, len);
+    }
+    
     return 1; // Success
+
+#elif CENV_SYS_UNIX || CENV_SYS_MAC
+# if CENV_USE_COMM_TOOLBOX
+    /* Event check to allow stopping runaway typeout on Mac */
+    CheckEvents(FALSE);
+# endif
+    return write(1, buf, (size_t)len) == len;
 
 // Emscripten stubs consolidated later
 #endif

@@ -47,6 +47,10 @@
 #include "fecmd.h"
 #include "klh10exp.h"
 
+#if CENV_SYS_EMSCRIPTEN
+#include <emscripten.h>
+#endif
+
 #if KLH10_CPU_KS
 # include "dvuba.h"	/* So can get at device info */
 #endif
@@ -421,7 +425,10 @@ fe_ctyout(int ch)
 int
 fe_ctysout(char *buf, int len)		/* Note length is signed int */
 {
-    return os_ttysout(buf, len);
+    EM_ASM_({ console.log('[FE_CTYSOUT] Calling os_ttysout with ' + $0 + ' chars: "' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
+    int result = os_ttysout(buf, len);
+    EM_ASM_({ console.log('[FE_CTYSOUT] os_ttysout returned ' + $0); }, result);
+    return result;
 }
 
 /* Top-level command character input

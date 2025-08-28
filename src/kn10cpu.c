@@ -2,7 +2,7 @@
 */
 /* $Id: kn10cpu.c,v 2.9 2002/05/21 16:54:32 klh Exp $
 */
-/*  Copyright © 1992, 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright ï¿½ 1992, 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -263,6 +263,9 @@ apr_walk(void)
 	}
 #endif
 	CLOCKPOLL();			/* Update clock if necessary */
+#ifdef __EMSCRIPTEN__
+	cty_incheck();			/* Ensure console input is processed in WebAssembly */
+#endif
 
 #if 1	/* Hack to support FE single-stepping */
 	if (cpu.mr_1step && (--cpu.mr_1step <= 0)) {
@@ -327,6 +330,9 @@ apr_fly(void)
 #endif
 
 	CLOCKPOLL();			/* Update clock if necessary */
+#ifdef __EMSCRIPTEN__
+	cty_incheck();			/* Ensure console input is processed in WebAssembly */
+#endif
     }
 }
 #endif /* !KLH10_EXTADR */
@@ -396,6 +402,9 @@ apr_creep(void)
 	/* EXECUTE! */
 	PC_ADDXCT(op_xct(iw_op(instr), iw_ac(instr), ea));
 	CLOCKPOLL();			/* Update clock if necessary */
+#ifdef __EMSCRIPTEN__
+	cty_incheck();			/* Ensure console input is processed in WebAssembly */
+#endif
 
 #if 1	/* Hack to support FE single-stepping */
 	if (cpu.mr_1step && (--cpu.mr_1step <= 0)) {
@@ -432,6 +441,9 @@ apr_hop(void)
 	}
 #endif
 	CLOCKPOLL();		/* Update clock if necessary */
+#ifdef __EMSCRIPTEN__
+	cty_incheck();		/* Ensure console input is processed in WebAssembly */
+#endif
     }
 }
 #endif /* EXTADR */

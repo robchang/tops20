@@ -2,7 +2,7 @@
 */
 /* $Id: dvdte.c,v 2.7 2002/04/24 07:56:08 klh Exp $
 */
-/*  Copyright © 1993, 2001 Kenneth L. Harrenstien
+/*  Copyright ï¿½ 1993, 2001 Kenneth L. Harrenstien
 **  All Rights Reserved
 **
 **  This file is part of the KLH10 Distribution.  Use, modification, and
@@ -48,6 +48,10 @@
 #include "kn10dev.h"
 #include "dvdte.h"
 #include "prmstr.h"	/* For parameter parsing */
+
+#if CENV_SYS_EMSCRIPTEN
+#include <emscripten.h>
+#endif
 #include "fecmd.h"
 
 #ifdef RCSID
@@ -2359,7 +2363,11 @@ static void dte_ctyforce(register struct dte *dt)
 #endif
     chunk = sizeof(dt->dt_ctyobuf) - dt->dt_ctyocnt;
     if (chunk > 0) {
+        EM_ASM_({ console.log('[DTE_FLUSH] Flushing ' + $0 + ' chars: "' + UTF8ToString($1, $2) + '"'); }, chunk, dt->dt_ctyobuf, chunk);
 	fe_ctysout(dt->dt_ctyobuf, chunk);
+        EM_ASM_({ console.log('[DTE_FLUSH] fe_ctysout completed'); });
+    } else {
+        EM_ASM_({ console.log('[DTE_FLUSH] No chars to flush (chunk=' + $0 + ')'); }, chunk);
     }
     dt->dt_ctyocnt = sizeof(dt->dt_ctyobuf);
     dt->dt_ctyocp = dt->dt_ctyobuf;
