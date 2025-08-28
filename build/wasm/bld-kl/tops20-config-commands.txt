@@ -5,8 +5,8 @@ devdef rh1  544   rh20
 devdef dsk0 rh0.0 rp	type=rp07 format=dbd9
 devdef mta0 rh1.0 tm03	type=tu45
 
-; Set Ethernet address
-devdef ni0 564 ni20 ipaddr=127.0.0.1
+; Set Ethernet address  
+devdef ni0 564 ni20 ipaddr=127.0.0.1 debug=1
 
 ; Define the idle device on 700
 devdef idler 700 host

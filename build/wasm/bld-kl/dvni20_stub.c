@@ -261,8 +261,7 @@ ni20_cono(struct device *d, h10_t erh)
 {
     register struct ni20 *ni = (struct ni20 *)d;
     
-    if (DVDEBUG(ni))
-        fprintf(stderr, "NI20 stub: CONO %o (was cond=%o)\n", (unsigned)erh, ni->ni_cond);
+    /* Debug output disabled to prevent buffer overflow */
     
     /* Handle control bits that require specific actions */
     if (erh & 0400000) {  /* CPT - Clear port */
@@ -271,7 +270,7 @@ ni20_cono(struct device *d, h10_t erh)
         ni->ni_lhcond = 0400000 | 0100 | 020 | 07;  /* PPT + IDL + ECP + PID=7 */
         ni->ni_pcba = 0;
         memset(ni->ni_regs, 0, sizeof(ni->ni_regs));
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Port cleared\n");
+        /* Port clear debug disabled */
         return;
     }
     
@@ -281,33 +280,76 @@ ni20_cono(struct device *d, h10_t erh)
     /* Handle enable/disable */
     if (erh & NI20CO_ENA) {
         ni->ni_lhcond |= NI20CI_ECP;  /* Set Enable Complete */
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Port enabled\n");
+        /* Port enable debug disabled */
     }
     if (erh & NI20CO_DIS) {
         ni->ni_lhcond |= NI20CI_DCP;  /* Set Disable Complete */
         ni->ni_lhcond &= ~NI20CI_ECP; /* Clear Enable Complete */
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Port disabled\n");
+        /* Port disable debug disabled */
     }
     
     /* Clear specific error/status bits that are cleared by CONO */
     if (erh & NI20CI_RQA) {
         ni->ni_cond &= ~NI20CI_RQA;  /* Clear Response Queue Available */
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Cleared RQA\n");
+        /* RQA clear debug disabled */
     }
     if (erh & NI20CI_FQE) {
         ni->ni_cond &= ~NI20CI_FQE;  /* Clear Free Queue Error */
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Cleared FQE\n");
+        /* FQE clear debug disabled */
     }
     if (erh & NI20CI_DME) {
         ni->ni_cond &= ~NI20CI_DME;  /* Clear Data Mover Error */
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Cleared DME\n");
+        /* DME clear debug disabled */
     }
     
-    /* Handle microprocessor run bit */
+    /* Handle microprocessor run bit - this is critical for initialization! */
     if (erh & NI20CO_MRN) {
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Microprocessor run requested\n");
-        /* For stub, just indicate we're running and idle */
-        ni->ni_lhcond |= NI20CI_IDL;
+        fprintf(stderr, "🔧 NI20: Microprocessor START (RAR=%o)\n", ni->ni_rar);
+        /* Transition to running state like real NI20 */
+        ni->ni_state = 2;  /* NI20_ST_RUN - Running disabled */
+        ni->ni_lhcond |= NI20CI_IDL;  /* Set Idle - microprocessor is running */
+        
+        /* Simulate microcode execution startup - when started at address 0,
+         * the real NI20 microcode does a channel transfer to get PCB info */
+        if (ni->ni_rar == 0) {
+            fprintf(stderr, "🎯 NI20: Starting microcode at address 0\n");
+            /* The microcode should perform a 3-word channel transfer here.
+             * For our stub, we'll just ensure the device appears properly initialized. */
+        }
+        
+        /* Handle disable/enable during startup */
+        if (erh & NI20CO_DIS) {
+            /* TOPS-20 sets MRN+DIS during initialization */
+            ni->ni_lhcond |= NI20CI_DCP;  /* Set Disable Complete */
+            fprintf(stderr, "✅ NI20: DCP - Disable Complete\n");
+        }
+    } else {
+        /* Stop requested */
+        fprintf(stderr, "⏹️ NI20: Microprocessor STOP\n");
+        ni->ni_state = 1;  /* NI20_ST_HALT - Halted */
+        ni->ni_lhcond &= ~NI20CI_IDL;  /* Clear Idle */
+    }
+    
+    /* Handle enable bit - TOPS-20 sets this after seeing DCP */
+    if (erh & NI20CO_ENA) {
+        if (ni->ni_state >= 2) {  /* If running (disabled or enabled) */
+            ni->ni_state = 3;  /* NI20_ST_RUNENA - Running enabled */
+            ni->ni_lhcond |= NI20CI_ECP;  /* Set Enable Complete */
+            
+            /* When enabled, the real NI20 microcode performs initialization:
+             * - Reads PCB (Port Control Block) 
+             * - Sets up internal queues and data structures
+             * - Becomes ready to process commands
+             * We simulate this by ensuring all the right status bits are set.
+             */
+            ni->ni_cond |= NI20CO_CQA;  /* Set Command Queue Available */
+            
+            fprintf(stderr, "✅ NI20: ECP - Enable Complete + CQA Ready\n");
+        } else {
+            /* Not running yet, just set ECP */
+            ni->ni_lhcond |= NI20CI_ECP;
+            fprintf(stderr, "✅ NI20: ECP - Enable Complete (not running)\n");
+        }
     }
 }
 
@@ -325,9 +367,7 @@ ni20_coni(struct device *d)
     /* Return current status from cached values */
     LRHSET(w, ni->ni_lhcond, ni->ni_cond);
     
-    if (DVDEBUG(ni))
-        fprintf(stderr, "NI20 stub: CONI -> %o,,%o (lhcond=%o, cond=%o)\n", 
-                LHGET(w), RHGET(w), ni->ni_lhcond, ni->ni_cond);
+    /* CONI debug output disabled */
     
     return w;
 }
@@ -338,11 +378,7 @@ ni20_datao(struct device *d, w10_t w)
 {
     register struct ni20 *ni = (struct ni20 *)d;
     
-    if (DVDEBUG(ni))
-        fprintf(stderr, "NI20 stub: DATAO %o,,%o (SEB=%d, LRA=%d)\n", 
-                LHGET(w), RHGET(w), 
-                (ni->ni_cond & NI20CO_SEB) ? 1 : 0,
-                (LHGET(w) & NI20DO_LRA) ? 1 : 0);
+    /* DATAO debug output disabled */
     
     if (ni->ni_cond & NI20CO_SEB) {
         /* Writing to EBUF */
@@ -353,7 +389,7 @@ ni20_datao(struct device *d, w10_t w)
     if (LHGET(w) & NI20DO_LRA) {
         /* Load RAM Address Register */
         ni->ni_rar = (LHGET(w) & (NI20DO_RAR | NI20DO_MSB)) >> 4;
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: RAR = %o\n", ni->ni_rar);
+        /* RAR debug output disabled */
     } else {
         /* Writing microcode RAM or queue operations */
         paddr_t addr = w10topa(w) & MASK22;
@@ -361,15 +397,15 @@ ni20_datao(struct device *d, w10_t w)
         /* Store PCB address on first write */
         if (ni->ni_pcba == 0) {
             ni->ni_pcba = addr;
-            if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: PCB base = %lo\n", (long)ni->ni_pcba);
+            /* PCB debug output disabled */
             
             /* Simulate successful PCB initialization */
             /* Set Command Queue Available to indicate we can accept commands */
             ni->ni_cond |= NI20CO_CQA;
-            if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Set CQA - ready for commands\n");
+            /* CQA debug output disabled */
         } else {
             /* Could be microcode load or queue operations */
-            if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: DATAO operation addr=%lo\n", (long)addr);
+            /* DATAO operation debug output disabled */
             
             /* Simulate successful operation completion */
             /* For microcode reload, TOPS-20 expects the device to become ready */
@@ -377,7 +413,7 @@ ni20_datao(struct device *d, w10_t w)
             ni->ni_lhcond |= NI20CI_IDL;  /* Device is idle (ready) */
             ni->ni_lhcond |= NI20CI_ECP;  /* Enable complete */
             
-            if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Operation completed successfully\n");
+            /* Operation complete debug output disabled */
         }
     }
 }
@@ -405,19 +441,19 @@ ni20_datai(struct device *d)
         ni->ni_cmd_pending = 0;
         /* Note: RQA will be cleared by CONO, not here */
         
-        if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Returned response data (success)\n");
+        /* Response debug disabled */
     } else {
         /* Reading microcode RAM - return version info for known addresses */
         switch (ni->ni_rar) {
         case (0136<<1)+1:  /* NI20_UA_VER address 189 - RAR 274 octal */
             /* Version register - return proper major/minor version */
             LRHSET(w, 0, (01<<12) | (0<<6));  /* Major=1, Minor=0 */
-            if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Returned version info 1.0\n");
+            /* Version info debug output disabled */
             break;
         case (0137<<1)+1:  /* NI20_UA_EDT address 191 - RAR 277 octal */
             /* Edit number register - return edit number */
             LRHSET(w, 0, (0172<<6));  /* Edit number 172 octal in proper format */
-            if (DVDEBUG(ni)) fprintf(stderr, "NI20 stub: Returned edit number 172\n");
+            /* Edit number debug output disabled */
             break;
         default:
             /* For reload simulation, return success patterns for other addresses */
@@ -431,12 +467,7 @@ ni20_datai(struct device *d)
         }
     }
     
-    if (DVDEBUG(ni))
-        fprintf(stderr, "NI20 stub: DATAI -> %o,,%o (SEB=%d, LAR=%d, RAR=%o)\n", 
-                LHGET(w), RHGET(w),
-                (ni->ni_cond & NI20CO_SEB) ? 1 : 0,
-                (ni->ni_cond & NI20CO_LAR) ? 1 : 0,
-                ni->ni_rar);
+    /* DATAI debug output disabled */
     
     return w;
 }
