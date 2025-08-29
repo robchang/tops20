@@ -19,15 +19,13 @@
 # - {echo on/off} only affect keyboard input visibility, not script commands
 # 0. GO
 go
-{wait 3}
+{wait 1}
 {echo on}
-{wait 2}
 /e
 {wait 1}
 dbugsw/ 2
 {wait 1}
 147{esc}g{nocr}
-{wait 2}
 {wait 20}
 {ctrl-c}
 log operator dec-20

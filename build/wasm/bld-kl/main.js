@@ -197,9 +197,9 @@ class KLH10WebInterface {
             this.inputRingBuffer = this.ringBufferManager;
             this.outputRingBuffer = this.ringBufferManager;
             
-            console.log('Main: Created shared WASM memory:', this.wasmMemory.buffer.byteLength, 'bytes');
-            console.log('Main: Input ring at offset:', this.ringBufferManager.inputOffset.toString(16));
-            console.log('Main: Output ring at offset:', this.ringBufferManager.outputOffset.toString(16));
+            // console.log('Main: Created shared WASM memory:', this.wasmMemory.buffer.byteLength, 'bytes');
+            // console.log('Main: Input ring at offset:', this.ringBufferManager.inputOffset.toString(16));
+            // console.log('Main: Output ring at offset:', this.ringBufferManager.outputOffset.toString(16));
 
             // Create Web Worker for emulator with cache-busting
             const timestamp = Date.now();
@@ -438,104 +438,89 @@ class KLH10WebInterface {
             // Disable the boot button immediately when starting
             document.getElementById('bootTops20Btn').disabled = true;
             
-            // Send each command with a delay
-            let delay = 0;
-            bootCommands.forEach((commandEntry, index) => {
-                setTimeout(() => {
-                    // Handle both string commands and object commands
-                    let command, noCr, waitSeconds, echoControl;
-                    if (typeof commandEntry === 'string') {
-                        command = commandEntry;
-                        noCr = false;
-                        waitSeconds = 0;
-                        echoControl = null;
-                    } else {
-                        command = commandEntry.command;
-                        noCr = commandEntry.noCr;
-                        waitSeconds = commandEntry.waitSeconds || 0;
-                        echoControl = commandEntry.echoControl || null;
-                    }
-                    
-                    // Handle echo control commands
-                    if (echoControl) {
-                        if (echoControl === 'on') {
-                            this.terminalEchoEnabled = true;
-                            this.terminal.writeln('\x1b[32mTerminal echo enabled\x1b[0m');
-                        } else if (echoControl === 'off') {
-                            this.terminalEchoEnabled = false;
-                            this.terminal.writeln('\x1b[33mTerminal echo disabled\x1b[0m');
-                        }
-                        return;
-                    }
-                    
-                    // Handle wait commands
-                    if (waitSeconds > 0) {
-                        this.terminal.writeln(`\x1b[33mWaiting ${waitSeconds} seconds...\x1b[0m`);
-                        // Wait commands don't send anything to the emulator, just add delay
-                        return;
-                    }
-                    
-                    // Skip null commands (from wait entries)
-                    if (command === null) {
-                        return;
-                    }
-                    
-                    // Debug: Log what we're about to send
-                    console.log(`[BOOT SCRIPT] Sending command: "${command}" (length: ${command.length}), noCr: ${noCr}`);
-                    console.log(`[BOOT SCRIPT] Command char codes:`, Array.from(command).map(c => `${c}(${c.charCodeAt(0)})`).join(' '));
-                    
-                    // Write command directly to WASM memory ring buffer
-                    const fullCommand = noCr ? command : command + '\r';
-                    console.log(`[BOOT SCRIPT] Full command: "${fullCommand}" (length: ${fullCommand.length})`);
-                    for (let i = 0; i < fullCommand.length; i++) {
-                        this.inputRingBuffer.writeInputChar(fullCommand[i]);
-                    }
-                    
-                    // Show what we're sending (always display for debugging)
-                    console.log(`[BOOT SCRIPT] inRuncmdMode: ${this.inRuncmdMode}`);
-                    this.terminal.write(`[SCRIPT] ${command}${noCr ? '' : '\r\n'}`);
-                    // if (this.inRuncmdMode) {
-                    //     this.terminal.write(command + (noCr ? '' : '\r\n'));
-                    // }
-                    
-                    // After the first few automatic commands, show instructions
-                    if (index === 1) { // After /g143 command
-                        setTimeout(() => {
-                            this.terminal.writeln('\x1b[32mAutomatic commands sent. Monitor will prompt for responses.\x1b[0m');
-                            this.terminal.writeln('\x1b[33mAnswer filesystem questions as they appear.\x1b[0m');
-                        }, 1000);
-                    }
-                }, delay);
-                
-                // Calculate delay based on command type
-                if (typeof commandEntry === 'object' && commandEntry.waitSeconds) {
-                    // For wait commands, add the specified wait time in milliseconds
-                    delay += commandEntry.waitSeconds * 1000;
-                } else if (index < 2) {
-                    // Longer delay for first commands
-                    delay += 2000; // 2 second delay for /l and /g143
-                } else {
-                    // Standard delay for other commands
-                    delay += 1000; // 1 second delay for other commands
-                }
-                
-                // After the last command, show completion message
-                if (index === bootCommands.length - 1) {
-                    setTimeout(() => {
-                        this.terminal.writeln('\x1b[32mBOOT TOPS-20 sequence completed!\x1b[0m');
-                        this.terminal.writeln('\x1b[33mContinue interacting with TOPS-20 system manually.\x1b[0m');
-                        
-                        // Focus terminal after boot completes
-                        this.terminal.focus();
-                    }, delay + 1000);
-                }
-            });
-
+            // Execute commands sequentially with non-blocking delays
+            this.executeCommandsSequentially(bootCommands, 0);
         } catch (error) {
-            this.terminal.writeln(`\x1b[31mError loading boot commands: ${error.message}\x1b[0m`);
-            console.error('Error loading boot commands:', error);
+            console.error('Error executing boot script:', error);
+            this.terminal.writeln('\x1b[31mError executing boot script: ' + error.message + '\x1b[0m');
         }
     }
+
+    executeCommandsSequentially(bootCommands, index) {
+        if (index >= bootCommands.length) {
+            // All commands completed
+            this.terminal.writeln('\x1b[32mBOOT TOPS-20 sequence completed!\x1b[0m');
+            this.terminal.writeln('\x1b[33mContinue interacting with TOPS-20 system manually.\x1b[0m');
+            this.terminal.focus();
+            return;
+        }
+
+        const commandEntry = bootCommands[index];
+        // Handle both string commands and object commands
+        let command, noCr, waitSeconds, echoControl;
+        if (typeof commandEntry === 'string') {
+            command = commandEntry;
+            noCr = false;
+            waitSeconds = 0;
+            echoControl = null;
+        } else {
+            command = commandEntry.command;
+            noCr = commandEntry.noCr;
+            waitSeconds = commandEntry.waitSeconds || 0;
+            echoControl = commandEntry.echoControl || null;
+        }
+
+        // Handle echo control commands
+        if (echoControl) {
+            if (echoControl === 'on') {
+                this.terminalEchoEnabled = true;
+                this.terminal.writeln('\x1b[32mTerminal echo enabled\x1b[0m');
+            } else if (echoControl === 'off') {
+                this.terminalEchoEnabled = false;
+                this.terminal.writeln('\x1b[33mTerminal echo disabled\x1b[0m');
+            }
+            // Continue with next command immediately
+            this.executeCommandsSequentially(bootCommands, index + 1);
+            return;
+        }
+
+        // Handle wait commands
+        if (waitSeconds > 0) {
+            this.terminal.writeln(`\x1b[33mWaiting ${waitSeconds} seconds...\x1b[0m`);
+            // Wait and then continue with next command - this allows event loop to run
+            setTimeout(() => {
+                this.executeCommandsSequentially(bootCommands, index + 1);
+            }, waitSeconds * 1000);
+            return;
+        }
+
+        // Skip null commands
+        if (command === null || command === undefined) {
+            this.executeCommandsSequentially(bootCommands, index + 1);
+            return;
+        }
+
+        // Debug: Log what we're about to send
+        console.log(`[BOOT SCRIPT] Sending command: "${command}" (length: ${command.length}), noCr: ${noCr}`);
+        console.log(`[BOOT SCRIPT] Command char codes:`, Array.from(command).map(c => `${c}(${c.charCodeAt(0)})`).join(' '));
+
+        // Write command directly to WASM memory ring buffer
+        const fullCommand = noCr ? command : command + '\r';
+        console.log(`[BOOT SCRIPT] Full command: "${fullCommand}" (length: ${fullCommand.length})`);
+        for (let i = 0; i < fullCommand.length; i++) {
+            this.inputRingBuffer.writeInputChar(fullCommand[i]);
+        }
+
+        // Show what we're sending (always display for debugging)
+        console.log(`[BOOT SCRIPT] inRuncmdMode: ${this.inRuncmdMode}`);
+        this.terminal.write(`[SCRIPT] ${command}${noCr ? '' : '\r\n'}`);
+
+        // Small delay before next command to allow processing
+        setTimeout(() => {
+            this.executeCommandsSequentially(bootCommands, index + 1);
+        }, 500); // Small delay but allows event loop to run
+    }
+
 
     startOutputPolling() {
         // Poll output ring buffer at 60fps  
@@ -550,7 +535,7 @@ class KLH10WebInterface {
         // Check for flush request from WASM side
         const flushRequest = this.outputRingBuffer.view.getUint32(this.outputRingBuffer.controlOffset + 4, true);
         if (flushRequest) {
-            console.log('[JS_FLUSH] Detected flush request from WASM side');
+            // console.log('[JS_FLUSH] Detected flush request from WASM side');
         }
         
         let output = '';
@@ -569,7 +554,7 @@ class KLH10WebInterface {
         
         // If there was a flush request, force terminal to flush and clear the request
         if (flushRequest) {
-            console.log('[JS_FLUSH] Processing flush request, output.length=' + output.length);
+            // console.log('[JS_FLUSH] Processing flush request, output.length=' + output.length);
             // Force immediate terminal update - this ensures characters appear right away
             if (output.length > 0) {
                 // Terminal write is already called above, just ensure it's processed
@@ -577,7 +562,7 @@ class KLH10WebInterface {
             }
             // Clear the flush request
             this.outputRingBuffer.view.setUint32(this.outputRingBuffer.controlOffset + 4, 0, true);
-            console.log('[JS_FLUSH] Cleared flush request');
+            // console.log('[JS_FLUSH] Cleared flush request');
         }
     }
 

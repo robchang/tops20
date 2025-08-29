@@ -425,9 +425,9 @@ fe_ctyout(int ch)
 int
 fe_ctysout(char *buf, int len)		/* Note length is signed int */
 {
-    EM_ASM_({ console.log('[FE_CTYSOUT] Calling os_ttysout with ' + $0 + ' chars: "' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
+    // EM_ASM_({ console.log('[FE_CTYSOUT] Calling os_ttysout with ' + $0 + ' chars: "' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
     int result = os_ttysout(buf, len);
-    EM_ASM_({ console.log('[FE_CTYSOUT] os_ttysout returned ' + $0); }, result);
+    // EM_ASM_({ console.log('[FE_CTYSOUT] os_ttysout returned ' + $0); }, result);
     return result;
 }
 

@@ -1023,7 +1023,7 @@ os_ttyout(int ch)
 int
 os_ttysout(char *buf, int len)		/* Note length is signed int */
 {
-    EM_ASM_({ console.log('[OS_TTYSOUT] ENTRY: len=' + $0 + ' buf="' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
+    // EM_ASM_({ console.log('[OS_TTYSOUT] ENTRY: len=' + $0 + ' buf="' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
 #if CENV_SYS_EMSCRIPTEN
     /* Write string output directly to output ring buffer using shared WASM memory */
     if (!shared_buffers) {
@@ -1075,9 +1075,9 @@ os_ttysout(char *buf, int len)		/* Note length is signed int */
     /* Set flush request to ensure immediate display of string output */
     if (shared_buffers && len > 0) {
         shared_buffers->flush_request = 1;
-        EM_ASM_({ console.log('[OS_TTYSOUT] Set flush_request=1 for ' + $0 + ' chars: "' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
+        // EM_ASM_({ console.log('[OS_TTYSOUT] Set flush_request=1 for ' + $0 + ' chars: "' + UTF8ToString($1, $2) + '"'); }, len, buf, len);
     } else {
-        EM_ASM_({ console.log('[OS_TTYSOUT] No flush request set (shared_buffers=' + $0 + ', len=' + $1 + ')'); }, shared_buffers, len);
+        // EM_ASM_({ console.log('[OS_TTYSOUT] No flush request set (shared_buffers=' + $0 + ', len=' + $1 + ')'); }, shared_buffers, len);
     }
     
     return 1; // Success
