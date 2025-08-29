@@ -274,7 +274,16 @@ int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
     
     d->dk_err = 0;
     
-    if (d->dk_fd < 0) return 0; /* Not mounted */
+    if (d->dk_fd < 0) {
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_read: disk not mounted");
+        return 0; /* Not mounted */
+    }
+    
+    /* Validate sector address and count */
+    if (nsec <= 0) {
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_read: invalid sector count");
+        return 0;
+    }
     
     /* Calculate disk byte address using proper sector size */
     daddr = ((off_t)secaddr) * d->dk_bytesec;
@@ -294,22 +303,25 @@ int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
         }
     }
     
-    /* Debug output removed for performance */
-    
-    /* Seek to position */
-    if (lseek(d->dk_fd, daddr, SEEK_SET) != daddr) {
+    /* Seek to position using abstraction layer */
+    if (!os_fdseek(d->dk_fd, daddr)) {
         d->dk_err = errno;
-        if (d->dk_errhan) d->dk_errhan(d, "vdk_read: seek failed");
+        char errbuf[256];
+        snprintf(errbuf, sizeof(errbuf), "vdk_read: seek failed to offset %ld, errno=%d", (long)daddr, errno);
+        if (d->dk_errhan) d->dk_errhan(d, errbuf);
         return 0;
     }
     
-    /* Read data into appropriate buffer */
-    ndone = read(d->dk_fd, (char*)read_buf, bcnt);
-    if (ndone < 0) {
+    /* Read data into appropriate buffer using abstraction layer */
+    size_t bytes_read;
+    if (!os_fdread(d->dk_fd, (char*)read_buf, bcnt, &bytes_read)) {
         d->dk_err = errno;
-        if (d->dk_errhan) d->dk_errhan(d, "vdk_read: read failed");
+        char errbuf[256];
+        snprintf(errbuf, sizeof(errbuf), "vdk_read: read failed, wanted %zu bytes, errno=%d", bcnt, errno);
+        if (d->dk_errhan) d->dk_errhan(d, errbuf);
         return 0;
     }
+    ndone = bytes_read;
     
     /* Handle sparse files - fill unread bytes with zeros */
     if (ndone < bcnt) {
@@ -326,40 +338,79 @@ int vdk_read(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
 }
 
 int vdk_write(struct vdk_unit *d, w10_t *wp, uint32 secaddr, int nsec) {
-    /* Write sectors to disk - following Unix version exactly */
+    /* Write sectors to disk with format conversion support */
     off_t daddr;
     size_t bcnt;
     ssize_t ndone;
+    static unsigned char temp_buf[8192];  /* Temp buffer for format conversion */
+    unsigned char *write_buf;
     
     d->dk_err = 0;
     
-    if (d->dk_fd < 0) return 0; /* Not mounted */
+    if (d->dk_fd < 0) {
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_write: disk not mounted");
+        return 0; /* Not mounted */
+    }
+    
+    /* Validate sector address and count */
+    if (nsec <= 0) {
+        if (d->dk_errhan) d->dk_errhan(d, "vdk_write: invalid sector count");
+        return 0;
+    }
     
     /* Calculate disk byte address using proper sector size */
     daddr = ((off_t)secaddr) * d->dk_bytesec;
     bcnt = nsec * d->dk_bytesec;
     
-    /* Debug output removed for performance */
+    /* Determine write buffer based on format conversion needs */
+    if (d->dk_wds2fmt == NULL) {
+        /* RAW format - write directly from word buffer */
+        write_buf = (unsigned char*)wp;
+    } else {
+        /* Non-RAW format - convert to temp buffer first */
+        write_buf = temp_buf;
+        if (bcnt > sizeof(temp_buf)) {
+            printf("❌ VDK_WRITE: conversion buffer too small (%zu > %zu)\n", bcnt, sizeof(temp_buf));
+            d->dk_err = ENOMEM;
+            return 0;
+        }
+        
+        /* Apply format conversion from PDP-10 words to disk format */
+        (*d->dk_wds2fmt)(write_buf, wp, nsec * VDK_NWDS(d));
+    }
     
-    /* Seek to position */
-    if (lseek(d->dk_fd, daddr, SEEK_SET) != daddr) {
+    /* Seek to position using abstraction layer */
+    if (!os_fdseek(d->dk_fd, daddr)) {
         d->dk_err = errno;
-        if (d->dk_errhan) d->dk_errhan(d, "vdk_write: seek failed");
+        char errbuf[256];
+        snprintf(errbuf, sizeof(errbuf), "vdk_write: seek failed to offset %ld, errno=%d", (long)daddr, errno);
+        if (d->dk_errhan) d->dk_errhan(d, errbuf);
         return 0;
     }
     
-    /* Write data */
-    ndone = write(d->dk_fd, (char*)wp, bcnt);
-    if (ndone < 0) {
+    /* Write data using abstraction layer */
+    size_t bytes_written;
+    if (!os_fdwrite(d->dk_fd, (char*)write_buf, bcnt, &bytes_written)) {
         d->dk_err = errno;
-        if (d->dk_errhan) d->dk_errhan(d, "vdk_write: write failed");
+        char errbuf[256];
+        snprintf(errbuf, sizeof(errbuf), "vdk_write: write failed, wanted %zu bytes, errno=%d", bcnt, errno);
+        if (d->dk_errhan) d->dk_errhan(d, errbuf);
         return 0;
     }
+    ndone = bytes_written;
     
     if (ndone != bcnt) {
         d->dk_err = errno;
-        if (d->dk_errhan) d->dk_errhan(d, "vdk_write: incomplete write");
-        return ndone / (VDK_SECTOR_SIZE * sizeof(w10_t));
+        char errbuf[256];
+        snprintf(errbuf, sizeof(errbuf), "vdk_write: incomplete write, wrote %ld of %zu bytes", (long)ndone, bcnt);
+        if (d->dk_errhan) d->dk_errhan(d, errbuf);
+        return ndone / d->dk_bytesec;
+    }
+    
+    /* Ensure data is synced to persistent storage for Emscripten */
+    if (fsync(d->dk_fd) != 0) {
+        /* fsync failure is not fatal, but log it for debugging */
+        printf("⚠️ VDK_WRITE: fsync warning for fd=%d, errno=%d\n", d->dk_fd, errno);
     }
     
     return nsec; /* Return full sector count written */

@@ -1232,7 +1232,27 @@ os_ttycmforce(void)
 int
 os_fdopen(osfd_t *afd, char *file, char *modes)
 {
-#if CENV_SYS_UNIX || CENV_SYS_MAC
+#if CENV_SYS_EMSCRIPTEN
+    EM_ASM_({ console.log('[OS_FDOPEN] EMSCRIPTEN: file="' + UTF8ToString($0) + '" modes="' + UTF8ToString($1) + '"'); }, file, modes);
+    int flags = 0;
+    if (!afd) return FALSE;
+    for (; modes && *modes; ++modes) switch (*modes) {
+	case 'r':	flags |= O_RDONLY;	break;	/* Yes I know it's 0 */
+	case 'w':	flags |= O_WRONLY;	break;
+	case '+':	flags |= O_RDWR;	break;
+	case 'a':	flags |= O_APPEND;	break;
+	case 'b':	/* Binary - ignored in Emscripten */
+						break;
+	case 'c':	flags |= O_CREAT;	break;
+	/* Ignore unknown chars for now */
+    }
+    if ((*afd = open(file, flags, 0666)) < 0) {
+	EM_ASM_({ console.log('[OS_FDOPEN] ERROR: open failed, errno=' + $0); }, errno);
+	return FALSE;
+    }
+    EM_ASM_({ console.log('[OS_FDOPEN] SUCCESS: fd=' + $0); }, *afd);
+    return TRUE;
+#elif CENV_SYS_UNIX || CENV_SYS_MAC
     int flags = 0;
     if (!afd) return FALSE;
     for (; modes && *modes; ++modes) switch (*modes) {
@@ -1263,7 +1283,12 @@ os_fdopen(osfd_t *afd, char *file, char *modes)
 int
 os_fdclose(osfd_t fd)
 {
-#if CENV_SYS_UNIX || CENV_SYS_MAC
+#if CENV_SYS_EMSCRIPTEN
+    EM_ASM_({ console.log('[OS_FDCLOSE] EMSCRIPTEN: closing fd=' + $0); }, fd);
+    int result = close(fd) != -1;
+    EM_ASM_({ console.log('[OS_FDCLOSE] close() returned ' + $0); }, result);
+    return result;
+#elif CENV_SYS_UNIX || CENV_SYS_MAC
     return close(fd) != -1;
 // Emscripten stubs consolidated later
 #endif
@@ -1272,7 +1297,12 @@ os_fdclose(osfd_t fd)
 int
 os_fdseek(osfd_t fd, osdaddr_t addr)
 {
-#if CENV_SYS_UNIX
+#if CENV_SYS_EMSCRIPTEN
+    EM_ASM_({ console.log('[OS_FDSEEK] EMSCRIPTEN: fd=' + $0 + ' addr=' + $1); }, fd, addr);
+    int result = lseek(fd, addr, SEEK_SET) != -1;
+    EM_ASM_({ console.log('[OS_FDSEEK] lseek returned ' + $0); }, result);
+    return result;
+#elif CENV_SYS_UNIX
     return lseek(fd, addr, L_SET) != -1;
 #elif CENV_SYS_MAC
     return lseek(fd, addr, SEEK_SET) != -1;
@@ -1285,12 +1315,27 @@ os_fdread(osfd_t fd,
 	  char *buf,
 	  size_t len, size_t *ares)
 {
-#if CENV_SYS_UNIX
+#if CENV_SYS_EMSCRIPTEN
+    EM_ASM_({ console.log('[OS_FDREAD] EMSCRIPTEN: fd=' + $0 + ' len=' + $1); }, fd, len);
+    register int res = read(fd, buf, len);
+    EM_ASM_({ console.log('[OS_FDREAD] read() returned ' + $0); }, res);
+    if (res < 0) {
+	EM_ASM_({ console.log('[OS_FDREAD] ERROR: read failed'); });
+	if (ares) *ares = 0;
+	return FALSE;
+    }
+    /* SUCCESS PATH - set bytes read and return TRUE */
+    if (ares) *ares = res;
+    EM_ASM_({ console.log('[OS_FDREAD] SUCCESS: read ' + $0 + ' bytes'); }, res);
+    return TRUE;
+#elif CENV_SYS_UNIX
     register int res = read(fd, buf, len);
     if (res < 0) {
 	if (ares) *ares = 0;
 	return FALSE;
     }
+    if (ares) *ares = res;
+    return TRUE;
 #elif CENV_SYS_MAC
     /* This is actually generic code for any system supporting unix-like
     ** calls with a 16-bit integer count interface.
@@ -1325,12 +1370,27 @@ os_fdwrite(osfd_t fd,
 	   char *buf,
 	   size_t len, size_t *ares)
 {
-#if CENV_SYS_UNIX
+#if CENV_SYS_EMSCRIPTEN
+    EM_ASM_({ console.log('[OS_FDWRITE] EMSCRIPTEN: fd=' + $0 + ' len=' + $1); }, fd, len);
+    register int res = write(fd, buf, len);
+    EM_ASM_({ console.log('[OS_FDWRITE] write() returned ' + $0); }, res);
+    if (res < 0) {
+	EM_ASM_({ console.log('[OS_FDWRITE] ERROR: write failed'); });
+	if (ares) *ares = 0;
+	return FALSE;
+    }
+    /* SUCCESS PATH - set bytes written and return TRUE */
+    if (ares) *ares = res;
+    EM_ASM_({ console.log('[OS_FDWRITE] SUCCESS: wrote ' + $0 + ' bytes'); }, res);
+    return TRUE;
+#elif CENV_SYS_UNIX
     register int res = write(fd, buf, len);
     if (res < 0) {
 	if (ares) *ares = 0;
 	return FALSE;
     }
+    if (ares) *ares = res;
+    return TRUE;
 #elif CENV_SYS_MAC
     /* This is actually generic code for any system supporting unix-like
     ** calls with a 16-bit integer count interface.
