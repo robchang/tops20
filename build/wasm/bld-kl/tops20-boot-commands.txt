@@ -1,11 +1,36 @@
 # TOPS-20 Boot Commands for KLH10 WebAssembly
 # Based on doc/kst20.txt installation sequence
-# Use {date-time} variable for automatic date/time insertion
-# Use {ctrl-c} to send CTRL-c
-
+#
+# Available script commands:
+# {date-time} - Insert current date/time in TOPS-20 format (DD-MMM-YYYY HHMM)
+# {ctrl-c}    - Send CTRL-C character (ASCII 3)
+# {wait #}    - Wait for # seconds before continuing (e.g. {wait 3})
+# {esc}       - Insert ESC character (ASCII 27) - can be used inline
+# {nocr}      - Don't add carriage return (\r) at end of command - can be used inline
+# {echo on}   - Enable terminal echo (keyboard input is displayed)
+# {echo off}  - Disable terminal echo (keyboard input is not displayed)
+#
+# Notes:
+# - Lines starting with # are comments and ignored
+# - Empty lines are ignored  
+# - {esc} and {nocr} can be used anywhere within a command line; others must be at start of line
+# - {nocr} prevents the automatic \r that is normally added to each command
+# - Terminal echo is enabled by default; use {echo off} to hide typed input
+# - {echo on/off} only affect keyboard input visibility, not script commands
 # 0. GO
 go
-
-/e 
+{wait 3}
+{echo on}
+{wait 2}
+/e
+{wait 1}
 dbugsw/ 2
-147{esc}g
+{wait 1}
+147{esc}g{nocr}
+{wait 2}
+{wait 20}
+{ctrl-c}
+log operator dec-20
+enable
+terminal vt100
+#DONE

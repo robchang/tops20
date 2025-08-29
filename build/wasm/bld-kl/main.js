@@ -63,6 +63,7 @@ class KLH10WebInterface {
         this.worker = null;
         this.emulatorReady = false;
         this.inRuncmdMode = true;   // KLH10 starts in command mode by default
+        this.terminalEchoEnabled = true;  // Terminal echo enabled by default
         
         // Shared WebAssembly memory (proper approach)
         this.wasmMemory = null;
@@ -104,8 +105,8 @@ class KLH10WebInterface {
         // Handle terminal input
         this.terminal.onData((data) => {
             if (this.worker && this.emulatorReady && this.inputRingBuffer) {
-                // Echo input in RUNCMD mode for visibility
-                if (this.inRuncmdMode) {
+                // Echo input based on both mode and echo setting
+                if (this.inRuncmdMode && this.terminalEchoEnabled) {
                     // Handle special characters
                     if (data === '\r' || data === '\n') {
                         this.terminal.write('\r\n');
@@ -367,29 +368,60 @@ class KLH10WebInterface {
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (trimmed && !trimmed.startsWith('#')) {
-                    if (trimmed === '{date-time}') {
-                        // Generate current date/time in TOPS-20 format: DD-MMM-YYYY HHMM
-                        const now = new Date();
-                        const day = now.getDate().toString().padStart(2, '0');
-                        const months = ['JAN','FEB','MAR','APR','MAY','JUN',
-                                       'JUL','AUG','SEP','OCT','NOV','DEC'];
-                        const month = months[now.getMonth()];
-                        const year = now.getFullYear();
-                        const hours = now.getHours().toString().padStart(2, '0');
-                        const minutes = now.getMinutes().toString().padStart(2, '0');
-                        const dateTime = `${day}-${month}-${year} ${hours}${minutes}`;
-                        bootCommands.push({ command: dateTime, noCr: false });
-                    } else if (trimmed === '{ctrl-c}') {
-                        // Send CTRL-C (ASCII 3)
-                        bootCommands.push({ command: '\x03', noCr: false });
+                    // Check if line starts with any { } command
+                    if (trimmed.startsWith('{')) {
+                        // Lines starting with { } commands - handle specially
+                        if (trimmed === '{date-time}') {
+                            // Generate current date/time in TOPS-20 format: DD-MMM-YYYY HHMM
+                            const now = new Date();
+                            const day = now.getDate().toString().padStart(2, '0');
+                            const months = ['JAN','FEB','MAR','APR','MAY','JUN',
+                                           'JUL','AUG','SEP','OCT','NOV','DEC'];
+                            const month = months[now.getMonth()];
+                            const year = now.getFullYear();
+                            const hours = now.getHours().toString().padStart(2, '0');
+                            const minutes = now.getMinutes().toString().padStart(2, '0');
+                            const dateTime = `${day}-${month}-${year} ${hours}${minutes}`;
+                            bootCommands.push({ command: dateTime, noCr: true }); // No CR for { } command lines
+                        } else if (trimmed === '{ctrl-c}') {
+                            // Send CTRL-C (ASCII 3)
+                            bootCommands.push({ command: '\x03', noCr: true }); // No CR for { } command lines
+                        } else if (trimmed.match(/^\{wait \d+\}$/)) {
+                            // Extract wait duration from {wait #} format
+                            const waitMatch = trimmed.match(/^\{wait (\d+)\}$/);
+                            const waitSeconds = parseInt(waitMatch[1], 10);
+                            bootCommands.push({ 
+                                command: null, 
+                                noCr: true, 
+                                waitSeconds: waitSeconds 
+                            });
+                        } else if (trimmed === '{echo on}') {
+                            // Turn on terminal echo
+                            bootCommands.push({ 
+                                command: null, 
+                                noCr: true, 
+                                echoControl: 'on' 
+                            });
+                        } else if (trimmed === '{echo off}') {
+                            // Turn off terminal echo
+                            bootCommands.push({ 
+                                command: null, 
+                                noCr: true, 
+                                echoControl: 'off' 
+                            });
+                        }
+                        // Note: Lines starting with { } that we don't recognize are ignored
                     } else {
                         // Process {esc} and {nocr} inline within commands
                         let processedCommand = trimmed;
+                        console.log(`[BOOT SCRIPT PARSE] Processing line: "${trimmed}"`);
                         processedCommand = processedCommand.replace(/\{esc\}/g, '\x1b'); // ESC character (ASCII 27)
                         
                         // Handle {nocr} - mark command to not add \r
                         const hasNoCr = processedCommand.includes('{nocr}');
                         processedCommand = processedCommand.replace(/\{nocr\}/g, ''); // Remove {nocr} markers
+                        
+                        console.log(`[BOOT SCRIPT PARSE] Final processed command: "${processedCommand}", noCr: ${hasNoCr}`);
                         
                         // Store command with nocr flag
                         bootCommands.push({
@@ -411,25 +443,60 @@ class KLH10WebInterface {
             bootCommands.forEach((commandEntry, index) => {
                 setTimeout(() => {
                     // Handle both string commands and object commands
-                    let command, noCr;
+                    let command, noCr, waitSeconds, echoControl;
                     if (typeof commandEntry === 'string') {
                         command = commandEntry;
                         noCr = false;
+                        waitSeconds = 0;
+                        echoControl = null;
                     } else {
                         command = commandEntry.command;
                         noCr = commandEntry.noCr;
+                        waitSeconds = commandEntry.waitSeconds || 0;
+                        echoControl = commandEntry.echoControl || null;
                     }
+                    
+                    // Handle echo control commands
+                    if (echoControl) {
+                        if (echoControl === 'on') {
+                            this.terminalEchoEnabled = true;
+                            this.terminal.writeln('\x1b[32mTerminal echo enabled\x1b[0m');
+                        } else if (echoControl === 'off') {
+                            this.terminalEchoEnabled = false;
+                            this.terminal.writeln('\x1b[33mTerminal echo disabled\x1b[0m');
+                        }
+                        return;
+                    }
+                    
+                    // Handle wait commands
+                    if (waitSeconds > 0) {
+                        this.terminal.writeln(`\x1b[33mWaiting ${waitSeconds} seconds...\x1b[0m`);
+                        // Wait commands don't send anything to the emulator, just add delay
+                        return;
+                    }
+                    
+                    // Skip null commands (from wait entries)
+                    if (command === null) {
+                        return;
+                    }
+                    
+                    // Debug: Log what we're about to send
+                    console.log(`[BOOT SCRIPT] Sending command: "${command}" (length: ${command.length}), noCr: ${noCr}`);
+                    console.log(`[BOOT SCRIPT] Command char codes:`, Array.from(command).map(c => `${c}(${c.charCodeAt(0)})`).join(' '));
                     
                     // Write command directly to WASM memory ring buffer
                     const fullCommand = noCr ? command : command + '\r';
+                    console.log(`[BOOT SCRIPT] Full command: "${fullCommand}" (length: ${fullCommand.length})`);
                     for (let i = 0; i < fullCommand.length; i++) {
                         this.inputRingBuffer.writeInputChar(fullCommand[i]);
                     }
                     
-                    // Show what we're sending if in command mode
-                    if (this.inRuncmdMode) {
-                        this.terminal.write(command + (noCr ? '' : '\r\n'));
-                    }
+                    // Show what we're sending (always display for debugging)
+                    console.log(`[BOOT SCRIPT] inRuncmdMode: ${this.inRuncmdMode}`);
+                    this.terminal.write(`[SCRIPT] ${command}${noCr ? '' : '\r\n'}`);
+                    // if (this.inRuncmdMode) {
+                    //     this.terminal.write(command + (noCr ? '' : '\r\n'));
+                    // }
                     
                     // After the first few automatic commands, show instructions
                     if (index === 1) { // After /g143 command
@@ -440,10 +507,15 @@ class KLH10WebInterface {
                     }
                 }, delay);
                 
-                // Longer delay for first commands, shorter for responses
-                if (index < 2) {
+                // Calculate delay based on command type
+                if (typeof commandEntry === 'object' && commandEntry.waitSeconds) {
+                    // For wait commands, add the specified wait time in milliseconds
+                    delay += commandEntry.waitSeconds * 1000;
+                } else if (index < 2) {
+                    // Longer delay for first commands
                     delay += 2000; // 2 second delay for /l and /g143
                 } else {
+                    // Standard delay for other commands
                     delay += 1000; // 1 second delay for other commands
                 }
                 
