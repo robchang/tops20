@@ -158,14 +158,6 @@ class EmulatorWorker {
                             
                             // Preload all available .tap files
                             const potentialTapes = [
-                                'bb-h137f-bm.tap',
-                                'bb-d867e-bm.tap',
-                                'emacs.tap',
-                                'panda.tap',
-                                'oldpascal-790924.tap',
-                                'pascal.tap',
-                                'tops20.tap',
-                                'system.tap'
                             ];
                             
                             for (const tapeFile of potentialTapes) {
