@@ -409,6 +409,12 @@ class KLH10WebInterface {
                                 noCr: true, 
                                 echoControl: 'off' 
                             });
+                        } else if (trimmed === '{cr}') {
+                            // Send carriage return
+                            bootCommands.push({ 
+                                command: '\r', 
+                                noCr: true  // Already includes CR, don't add another
+                            });
                         }
                         // Note: Lines starting with { } that we don't recognize are ignored
                     } else {
@@ -510,10 +516,6 @@ class KLH10WebInterface {
         for (let i = 0; i < fullCommand.length; i++) {
             this.inputRingBuffer.writeInputChar(fullCommand[i]);
         }
-
-        // Show what we're sending (always display for debugging)
-        console.log(`[BOOT SCRIPT] inRuncmdMode: ${this.inRuncmdMode}`);
-        this.terminal.write(`[SCRIPT] ${command}${noCr ? '' : '\r\n'}`);
 
         // Small delay before next command to allow processing
         setTimeout(() => {

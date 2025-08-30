@@ -9,6 +9,7 @@
 # {nocr}      - Don't add carriage return (\r) at end of command - can be used inline
 # {echo on}   - Enable terminal echo (keyboard input is displayed)
 # {echo off}  - Disable terminal echo (keyboard input is not displayed)
+# {cr}        - Send carriage return (\r) character
 #
 # Notes:
 # - Lines starting with # are comments and ignored
@@ -19,16 +20,14 @@
 # - {echo on/off} only affect keyboard input visibility, not script commands
 # 0. GO
 go
+{echo off}
+{cr}
+{wait 5}
+new
 {wait 1}
-{echo on}
-/e
-{wait 1}
-dbugsw/ 2
-{wait 1}
-147{esc}g{nocr}
-{wait 20}
+no
+{wait 10}
 {ctrl-c}
 log operator dec-20
 enable
 terminal vt100
-#DONE
