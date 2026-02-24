@@ -29,6 +29,18 @@ tmp*/*
 *.wasm
 **/*.wasm
 
+# Disk and tape images (downloaded via ./download-images.sh)
+*.tap
+build/wasm/bld-*/RH20.*
+build/wasm/bld-*/*-dbd9
+
+# Build-generated files in WASM build directories
+build/wasm/bld-*/kn10-*.js
+build/wasm/config.log
+build/wasm/config.status
+build/wasm/bld-*/Makefile
+build/wasm/bld-*/config.h
+
 # Panda distribution documentation
 Panda-doc/
 
