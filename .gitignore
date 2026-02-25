@@ -36,6 +36,10 @@ build/wasm/bld-*/*-dbd9
 
 # Build-generated files in WASM build directories
 build/wasm/bld-*/kn10-*.js
+
+# Exception: track KL10 WASM build outputs (539 KB, needed to run without Emscripten)
+!build/wasm/bld-kl/kn10-kl.wasm
+!build/wasm/bld-kl/kn10-kl.js
 build/wasm/config.log
 build/wasm/config.status
 build/wasm/bld-*/Makefile

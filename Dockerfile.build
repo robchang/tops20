@@ -1,0 +1,31 @@
+# Multi-stage Dockerfile — builds KLH10 WASM from source using Emscripten
+# Use this instead of Dockerfile if you want to compile from source.
+#
+# Usage:
+#   docker build -f Dockerfile.build -t tops20 .
+#   docker run -p 8080:8080 tops20
+#   Open http://localhost:8080
+
+# Stage 1: Build WASM emulator from C source
+FROM emscripten/emsdk:4.0.13 AS builder
+WORKDIR /src
+COPY . .
+RUN ./autogen.sh \
+    && cd build/wasm \
+    && emconfigure ../../configure --host=wasm32-unknown-emscripten \
+    && cd bld-kl \
+    && emmake make -j$(nproc)
+
+# Stage 2: Runtime image (Node.js only)
+FROM node:22-slim
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl bzip2 && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /src/build/wasm/bld-kl/ ./build/wasm/bld-kl/
+COPY --from=builder /src/run/klt20/boot.sav ./run/klt20/boot.sav
+COPY --from=builder /src/run/klt20/mtboot.sav ./run/klt20/mtboot.sav
+COPY download-images.sh .
+RUN ./download-images.sh
+EXPOSE 8080
+CMD ["node", "build/wasm/bld-kl/serve.js"]

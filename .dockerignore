@@ -1,0 +1,7 @@
+.git/
+.claude/
+Panda-doc/
+node_modules/
+*.tap
+build/wasm/bld-*/RH20.*
+build/wasm/bld-*/*-dbd9

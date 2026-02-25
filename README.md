@@ -6,14 +6,11 @@ This is a WebAssembly port of Kenneth L. Harrenstien's [KLH10](https://github.co
 
 ## Quick Start
 
-**Prerequisites:** Node.js, curl, bunzip2, tar
-
 ```bash
 git clone https://github.com/robchang/tops20.git
 cd tops20
-./download-images.sh          # Downloads ~320 MB, extracts to ~500 MB
-cd build/wasm/bld-kl
-node serve.js                 # Starts HTTP server on port 8080
+docker build -t tops20 .
+docker run -p 8080:8080 tops20
 ```
 
 Open http://localhost:8080 in your browser, then:
@@ -22,6 +19,24 @@ Open http://localhost:8080 in your browser, then:
 2. Click **Load TOPS-20 Config** — configures virtual hardware (RP07 disk, DTE)
 3. Click **BOOT TOPS-20** — boots the operating system
 4. Login: **operator** / **dec-20**
+
+The first `docker build` downloads ~320 MB of disk/tape images, so it takes a few minutes. Subsequent builds use the Docker cache.
+
+To build the WASM emulator from source (instead of using the pre-built binaries):
+
+```bash
+docker build -f Dockerfile.build -t tops20 .
+```
+
+### Without Docker
+
+Requires Node.js, curl, bunzip2, tar:
+
+```bash
+./download-images.sh          # Downloads ~320 MB, extracts to ~500 MB
+cd build/wasm/bld-kl
+node serve.js                 # Starts HTTP server on port 8080
+```
 
 ## What Is This?
 
@@ -33,9 +48,13 @@ This project ports KLH10 to run in your browser via WebAssembly (Emscripten), wi
 
 ## Building from Source
 
-### Using Dev Container (Recommended)
+### Using Dev Container (Recommended for Development)
 
-Open this repository in VS Code with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension. The `.devcontainer/` configuration includes Emscripten SDK, Node.js, and Python.
+Open this repository in VS Code with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension. The dev container includes Emscripten SDK, Node.js, and Python, and automatically downloads disk/tape images on first start. To run the emulator:
+
+```bash
+cd build/wasm/bld-kl && node serve.js
+```
 
 ### Manual Build
 
