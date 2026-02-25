@@ -64,6 +64,8 @@ class KLH10WebInterface {
         this.emulatorReady = false;
         this.inRuncmdMode = true;   // KLH10 starts in command mode by default
         this.terminalEchoEnabled = true;  // Terminal echo enabled by default
+        this.autoBootInProgress = false;  // True during one-click boot sequence
+        this._readyResolve = null;        // Promise resolve for waitForReady()
         
         // Shared WebAssembly memory (proper approach)
         this.wasmMemory = null;
@@ -101,9 +103,11 @@ class KLH10WebInterface {
         // Open terminal in DOM
         this.terminal.open(document.getElementById('terminal'));
         this.fitAddon.fit();
+        this.terminal.resize(this.terminal.cols, 24);
 
         // Handle terminal input
         this.terminal.onData((data) => {
+            if (this.autoBootInProgress) return; // Block input during auto-boot
             if (this.worker && this.emulatorReady && this.inputRingBuffer) {
                 // Echo input based on both mode and echo setting
                 if (this.inRuncmdMode && this.terminalEchoEnabled) {
@@ -135,14 +139,15 @@ class KLH10WebInterface {
             }
         });
 
-        // Handle window resize
+        // Handle window resize (fit width, keep 24 rows)
         window.addEventListener('resize', () => {
             this.fitAddon.fit();
+            this.terminal.resize(this.terminal.cols, 24);
         });
 
         // Initial welcome message
         this.terminal.writeln('\x1b[36mKLH10 PDP-10 Emulator - WebAssembly Port\x1b[0m');
-        this.terminal.writeln('Click "Start Emulator" to begin...');
+        this.terminal.writeln('Click "Boot TOPS-20" to begin...');
         this.terminal.writeln('');
         
         // Focus the terminal for immediate keyboard input
@@ -150,6 +155,20 @@ class KLH10WebInterface {
     }
 
     setupEventListeners() {
+        // Simple mode
+        document.getElementById('autoBootBtn').addEventListener('click', () => this.autoBoot());
+        document.getElementById('showAdvanced').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('simpleControls').style.display = 'none';
+            document.getElementById('advancedControls').style.display = '';
+        });
+        document.getElementById('showSimple').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('advancedControls').style.display = 'none';
+            document.getElementById('simpleControls').style.display = '';
+        });
+
+        // Advanced mode
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
         const loadConfigBtn = document.getElementById('loadConfigBtn');
@@ -216,10 +235,16 @@ class KLH10WebInterface {
                         document.getElementById('resetBtn').disabled = false;
                         document.getElementById('loadConfigBtn').disabled = false;
                         document.getElementById('bootTops20Btn').disabled = true; // Only enable after config loaded
-                        
+
                         // Start polling output from shared ring buffer
                         this.startOutputPolling();
-                        
+
+                        // Resolve waitForReady() promise if auto-booting
+                        if (this._readyResolve) {
+                            this._readyResolve();
+                            this._readyResolve = null;
+                        }
+
                         // Focus terminal after emulator starts
                         this.terminal.focus();
                         break;
@@ -452,12 +477,15 @@ class KLH10WebInterface {
         }
     }
 
-    executeCommandsSequentially(bootCommands, index) {
+    executeCommandsSequentially(bootCommands, index, onComplete) {
         if (index >= bootCommands.length) {
             // All commands completed
-            this.terminal.writeln('\x1b[32mBOOT TOPS-20 sequence completed!\x1b[0m');
-            this.terminal.writeln('\x1b[33mContinue interacting with TOPS-20 system manually.\x1b[0m');
+            if (!this.autoBootInProgress) {
+                this.terminal.writeln('\x1b[32mBOOT TOPS-20 sequence completed!\x1b[0m');
+                this.terminal.writeln('\x1b[33mContinue interacting with TOPS-20 system manually.\x1b[0m');
+            }
             this.terminal.focus();
+            if (onComplete) onComplete();
             return;
         }
 
@@ -486,7 +514,7 @@ class KLH10WebInterface {
                 this.terminal.writeln('\x1b[33mTerminal echo disabled\x1b[0m');
             }
             // Continue with next command immediately
-            this.executeCommandsSequentially(bootCommands, index + 1);
+            this.executeCommandsSequentially(bootCommands, index + 1, onComplete);
             return;
         }
 
@@ -495,14 +523,14 @@ class KLH10WebInterface {
             this.terminal.writeln(`\x1b[33mWaiting ${waitSeconds} seconds...\x1b[0m`);
             // Wait and then continue with next command - this allows event loop to run
             setTimeout(() => {
-                this.executeCommandsSequentially(bootCommands, index + 1);
+                this.executeCommandsSequentially(bootCommands, index + 1, onComplete);
             }, waitSeconds * 1000);
             return;
         }
 
         // Skip null commands
         if (command === null || command === undefined) {
-            this.executeCommandsSequentially(bootCommands, index + 1);
+            this.executeCommandsSequentially(bootCommands, index + 1, onComplete);
             return;
         }
 
@@ -519,7 +547,7 @@ class KLH10WebInterface {
 
         // Small delay before next command to allow processing
         setTimeout(() => {
-            this.executeCommandsSequentially(bootCommands, index + 1);
+            this.executeCommandsSequentially(bootCommands, index + 1, onComplete);
         }, 500); // Small delay but allows event loop to run
     }
 
@@ -573,32 +601,181 @@ class KLH10WebInterface {
             this.worker.terminate();
             this.worker = null;
         }
-        
+
         // Stop output polling
         if (this.outputPollInterval) {
             clearInterval(this.outputPollInterval);
             this.outputPollInterval = null;
         }
-        
+
         // Clean up shared resources
         this.wasmMemory = null;
         this.inputRingBuffer = null;
         this.outputRingBuffer = null;
         this.emulatorReady = false;
-        
+        this.autoBootInProgress = false;
+        this._readyResolve = null;
+
         this.terminal.clear();
         this.terminal.writeln('\x1b[36mKLH10 PDP-10 Emulator - WebAssembly Port\x1b[0m');
-        this.terminal.writeln('Click "Start Emulator" to begin...');
+        this.terminal.writeln('Click "Boot TOPS-20" to begin...');
         this.terminal.writeln('');
-        
+
         this.updateStatus('Ready to start emulator', 'ready');
         document.getElementById('startBtn').disabled = false;
         document.getElementById('resetBtn').disabled = true;
         document.getElementById('loadConfigBtn').disabled = true;
         document.getElementById('bootTops20Btn').disabled = true;
+        document.getElementById('autoBootBtn').disabled = false;
         
         // Focus terminal after reset
         this.terminal.focus();
+    }
+
+    // --- Simple Mode (one-click boot) ---
+
+    waitForReady() {
+        if (this.emulatorReady) return Promise.resolve();
+        return new Promise((resolve) => {
+            this._readyResolve = resolve;
+        });
+    }
+
+    loadInstallationConfigAsync() {
+        return new Promise((resolve, reject) => {
+            if (!this.worker || !this.emulatorReady || !this.inputRingBuffer) {
+                reject(new Error('Emulator not ready'));
+                return;
+            }
+
+            fetch('tops20-config-commands.txt')
+                .then(response => {
+                    if (!response.ok) throw new Error('Could not load config commands file');
+                    return response.text();
+                })
+                .then(commandsText => {
+                    const lines = commandsText.split('\n');
+                    const configCommands = [];
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith(';')) {
+                            configCommands.push(trimmed);
+                        }
+                    }
+
+                    let delay = 0;
+                    configCommands.forEach((command, index) => {
+                        setTimeout(() => {
+                            const fullCommand = command + '\r';
+                            for (let i = 0; i < fullCommand.length; i++) {
+                                this.inputRingBuffer.writeInputChar(fullCommand[i]);
+                            }
+                            if (this.inRuncmdMode) {
+                                this.terminal.write(command + '\r\n');
+                            }
+                            if (index === configCommands.length - 1) {
+                                setTimeout(() => {
+                                    resolve();
+                                }, 100);
+                            }
+                        }, delay);
+                        delay += 500;
+                    });
+                })
+                .catch(reject);
+        });
+    }
+
+    bootTops20Async() {
+        return new Promise((resolve, reject) => {
+            if (!this.worker || !this.emulatorReady || !this.inputRingBuffer) {
+                reject(new Error('Emulator not ready'));
+                return;
+            }
+
+            fetch('tops20-boot-commands.txt')
+                .then(response => {
+                    if (!response.ok) throw new Error('Could not load boot commands file');
+                    return response.text();
+                })
+                .then(commandsText => {
+                    const lines = commandsText.split('\n');
+                    const bootCommands = [];
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (trimmed && !trimmed.startsWith('#')) {
+                            if (trimmed.startsWith('{')) {
+                                if (trimmed === '{date-time}') {
+                                    const now = new Date();
+                                    const day = now.getDate().toString().padStart(2, '0');
+                                    const months = ['JAN','FEB','MAR','APR','MAY','JUN',
+                                                   'JUL','AUG','SEP','OCT','NOV','DEC'];
+                                    const month = months[now.getMonth()];
+                                    const year = now.getFullYear();
+                                    const hours = now.getHours().toString().padStart(2, '0');
+                                    const minutes = now.getMinutes().toString().padStart(2, '0');
+                                    const dateTime = `${day}-${month}-${year} ${hours}${minutes}`;
+                                    bootCommands.push({ command: dateTime, noCr: true });
+                                } else if (trimmed === '{ctrl-c}') {
+                                    bootCommands.push({ command: '\x03', noCr: true });
+                                } else if (trimmed.match(/^\{wait \d+\}$/)) {
+                                    const waitMatch = trimmed.match(/^\{wait (\d+)\}$/);
+                                    bootCommands.push({ command: null, noCr: true, waitSeconds: parseInt(waitMatch[1], 10) });
+                                } else if (trimmed === '{echo on}') {
+                                    bootCommands.push({ command: null, noCr: true, echoControl: 'on' });
+                                } else if (trimmed === '{echo off}') {
+                                    bootCommands.push({ command: null, noCr: true, echoControl: 'off' });
+                                } else if (trimmed === '{cr}') {
+                                    bootCommands.push({ command: '\r', noCr: true });
+                                }
+                            } else {
+                                let processedCommand = trimmed;
+                                processedCommand = processedCommand.replace(/\{esc\}/g, '\x1b');
+                                const hasNoCr = processedCommand.includes('{nocr}');
+                                processedCommand = processedCommand.replace(/\{nocr\}/g, '');
+                                bootCommands.push({ command: processedCommand, noCr: hasNoCr });
+                            }
+                        }
+                    }
+
+                    this.executeCommandsSequentially(bootCommands, 0, resolve);
+                })
+                .catch(reject);
+        });
+    }
+
+    async autoBoot() {
+        this.autoBootInProgress = true;
+        document.getElementById('autoBootBtn').disabled = true;
+
+        try {
+            // Step 1: Start emulator
+            this.updateStatus('Initializing emulator... please wait', 'loading');
+            await this.startEmulator();
+
+            // Step 2: Wait for worker to be ready (loads WASM + disk image)
+            this.terminal.writeln('\x1b[33mPlease wait — loading disk image (~476 MB)...\x1b[0m');
+            await this.waitForReady();
+
+            // Step 3: Load config
+            this.updateStatus('Configuring virtual hardware... please wait', 'loading');
+            await this.loadInstallationConfigAsync();
+
+            // Step 4: Boot
+            this.updateStatus('Booting TOPS-20... please wait', 'loading');
+            this.terminal.writeln('\x1b[33mPlease wait — TOPS-20 is booting...\x1b[0m');
+            await this.bootTops20Async();
+
+            // Done
+            this.autoBootInProgress = false;
+            this.updateStatus('TOPS-20 ready', 'ready');
+            this.terminal.focus();
+        } catch (error) {
+            this.autoBootInProgress = false;
+            this.updateStatus(`Boot failed: ${error.message}`, 'error');
+            document.getElementById('autoBootBtn').disabled = false;
+            console.error('Auto-boot failed:', error);
+        }
     }
 }
 
