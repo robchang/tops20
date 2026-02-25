@@ -15,9 +15,8 @@ docker run -p 8080:8080 tops20
 
 Open http://localhost:8080 in your browser, then:
 
-1. Click **Boot TOPS-20** — automatically loads the disk image, configures hardware, and boots the OS
-2. Wait ~30 seconds for TOPS-20 to boot
-3. Login: **operator** / **dec-20**
+1. Click **Boot TOPS-20** — automatically loads the disk image, configures hardware, boots the OS, and logs in
+2. Wait ~30 seconds for the boot sequence to complete
 
 An **Advanced Mode** link is available for manual step-by-step control of the emulator.
 
