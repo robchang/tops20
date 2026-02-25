@@ -3,7 +3,7 @@
 > **Note:** Always review the official Emscripten documentation and leverage its provided runtime libraries (FS, TTY, sockets, etc.) wherever possible. Our work should focus only on missing functionality that Emscripten does not already provide. This ensures minimal maintenance burden and maximum compatibility with upstream improvements.
 
 ## [Overview]
-The goal is to port the KLH10 PDP-10 emulator to WebAssembly with a **Node.js-only milestone** that produces a clean `.wasm` build. This milestone will validate platform detection, build system integration, and minimal device support, ensuring the emulator runs under Node.js with console I/O before moving to browser integration.
+The goal is to port the KLH10 PDP-10 emulator to WebAssembly. The initial Node.js milestone validated platform detection and build system integration. The port is now complete and runs in the browser with xterm.js terminal, Web Worker threading, and SharedArrayBuffer ring buffer I/O. Primary target: KL10 + TOPS-20 V7.0 (Panda distribution).
 
 This implementation isolates WebAssembly-specific code in a small set of files, preserving the maintainability of the KLH10 codebase. The approach leverages Emscripten’s POSIX compatibility, Autotools cross-compilation, and KLH10’s existing OS abstraction layer.
 
@@ -58,28 +58,30 @@ No new classes are required. KLH10 is a C project with procedural abstractions. 
 ## [Dependencies]
 We will integrate Emscripten and Autotools.
 
-- **New dependency**: Emscripten SDK (`emcc`, `emconfigure`, `emmake`).  
-- **Autotools**: Ensure `config.sub` recognizes `wasm32-unknown-emscripten`.  
-- **Build flags**:  
-  - `-sENVIRONMENT=node`  
-  - `-sALLOW_MEMORY_GROWTH=1`  
-  - `-sEXPORTED_FUNCTIONS='["_main"]'`  
-  - `-sEXPORTED_RUNTIME_METHODS='["ccall","cwrap","FS"]'`  
+- **New dependency**: Emscripten SDK 4.0.13+ (`emcc`, `emconfigure`, `emmake`).
+- **Autotools**: `config.sub` recognizes `wasm32-unknown-emscripten`.
+- **Build flags** (actual from generated Makefile):
+  - `-sINITIAL_MEMORY=134217728` (128MB fixed)
+  - `-sALLOW_MEMORY_GROWTH=0`
+  - `-sSTACK_SIZE=8388608` (8MB)
+  - `-sEXPORTED_FUNCTIONS=_main,_malloc,_free`
+  - `-sEXPORTED_RUNTIME_METHODS=callMain,FS,stringToUTF8,UTF8ToString,HEAPU8`  
 
 ---
 
 ## [Testing]
 We will validate the Node.js build.
 
-- **Smoke test**:  
-  - Run `node ./build/wasm/klh10.js`  
-  - Confirm startup banner appears.  
-  - Verify console I/O works (prompt responds to input).  
+- **Smoke test**:
+  - Run `cd build/wasm/bld-kl && node serve.js`
+  - Open http://localhost:8080
+  - Click Start Emulator → Load TOPS-20 Config → BOOT TOPS-20
+  - Login: operator / dec-20
 
-- **Validation criteria**:  
-  - No platform detection errors.  
-  - `osdsup.c` compiles cleanly.  
-  - `.wasm` and `.js` artifacts generated.  
+- **Validation criteria**:
+  - No platform detection errors.
+  - `osdsup.c` compiles cleanly.
+  - `kn10-kl.wasm` (400KB) and `kn10-kl.js` (140KB) generated in `build/wasm/bld-kl/`.  
 
 ---
 
@@ -93,5 +95,5 @@ We will proceed in a structured sequence.
 5. Create `build/wasm/config.site`.  
 6. Run `emconfigure ./configure --host=wasm32-unknown-emscripten`.  
 7. Run `emmake make -j`.  
-8. Validate Node.js execution with `node ./klh10.js`.  
+8. Validate: `cd build/wasm/bld-kl && node serve.js` → open http://localhost:8080.  
 9. Document results in `WASM_PORTING_NOTES.md`.

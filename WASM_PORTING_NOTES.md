@@ -38,10 +38,10 @@
 ## Final Status - PORT COMPLETE ✅
 
 ### Successfully Generated WebAssembly Files
-- **klh10.js** (194KB) - JavaScript module loader and runtime
-- **klh10.wasm** (318KB) - WebAssembly binary containing KLH10 PDP-10 emulator
-- **klh10.wasm.map** (24KB) - Source map for debugging
-- **Location**: `build/wasm/`
+- **kn10-kl.js** (140KB) - JavaScript module loader and runtime
+- **kn10-kl.wasm** (400KB) - WebAssembly binary containing KLH10 PDP-10 emulator
+- **kn10-kl.wasm.map** - Source map for debugging
+- **Location**: `build/wasm/bld-kl/`
 
 ### What Works ✅
 - ✅ Platform detection and build system integration
@@ -75,20 +75,21 @@ The WebAssembly port is now ready for:
 
 ## Architecture Decisions
 
-### Demo Mode Configuration (Implemented)
-Following .clinerules Demo Mode:
-- **Target**: KS10 + TOPS-20 ✅
-- **Devices**: Console (dvcty) only ✅
-- **Disabled**: Device subprocesses, networking, shared memory, complex devices ✅
-- **Filesystem**: RAM-based (MEMFS) ✅  
-- **Threading**: Single-threaded event loop ✅
+### Build Configuration (Implemented)
+- **Primary Target**: KL10 + TOPS-20 V7.0 (Panda distribution) ✅
+- **Alternative Target**: KS10 + TOPS-20 V4.1 (also available in `bld-ks/`)
+- **Devices**: Console (dvcty), DTE (dvdte), disk (dvrpxx/vdisk), tape (dvtm03/vmtape) ✅
+- **Disabled**: Device subprocesses (fork-based), networking (NI20) ✅
+- **Filesystem**: RAM-based (MEMFS) ✅
+- **Threading**: Web Worker with SharedArrayBuffer ring buffer I/O ✅
 
 ### WebAssembly Features (Implemented)
-- **Environment**: Node.js compatible (`-sENVIRONMENT=node`) ✅
-- **Memory**: Dynamic growth enabled (`-sALLOW_MEMORY_GROWTH=1`) ✅
+- **Environment**: Browser with Web Worker ✅
+- **Memory**: Fixed 128MB (`-sINITIAL_MEMORY=134217728 -sALLOW_MEMORY_GROWTH=0`) ✅
+- **Stack**: 8MB (`-sSTACK_SIZE=8388608`) ✅
 - **Filesystem**: Emscripten MEMFS ✅
-- **Exports**: Main entry point and runtime methods ✅
-- **Build**: Proper autotools cross-compilation ✅
+- **Exports**: `_main,_malloc,_free` + `callMain,FS,stringToUTF8,UTF8ToString,HEAPU8` ✅
+- **Build**: Proper autotools cross-compilation (`wasm32-unknown-emscripten`) ✅
 
 ### WebAssembly Adaptation Strategy (Proven)
 - **Non-invasive**: Uses existing KLH10 architecture patterns ✅
@@ -105,18 +106,18 @@ Following .clinerules Demo Mode:
 
 ## Build Metrics
 
-- **Object files compiled**: 20+ modules (240KB+ total)
-- **WebAssembly binary size**: 318KB (reasonable for PDP-10 emulator)
-- **JavaScript runtime**: 194KB (module loader and bindings)
+- **Object files compiled**: 30+ modules (900KB+ total)
+- **WebAssembly binary size**: 400KB (`kn10-kl.wasm`)
+- **JavaScript runtime**: 140KB (`kn10-kl.js`)
 - **Build time**: ~15 minutes on first build
-- **Undefined symbols**: 80+ instruction functions (acceptable for demo)
+- **Undefined symbols**: None — all resolved, clean link ✅
 
 ## Success Criteria Met ✅
 
 - ✅ **Demo Mode binary** compiles and links successfully
 - ✅ **Reproducible build** using proper autotools cross-compilation
 - ✅ **Platform dependencies** documented and resolved
-- ✅ **WebAssembly artifacts** generated (klh10.js, klh10.wasm)
+- ✅ **WebAssembly artifacts** generated (kn10-kl.js, kn10-kl.wasm)
 - ✅ **Architecture preserved** - non-invasive porting approach
 
 ## AI Decision Framework for Complex C Porting
@@ -249,7 +250,7 @@ Isolated function errors → Implementation gap → Individual function fixes
 - OS abstraction layer compiles without platform errors
 - WebAssembly binary generates and initializes successfully
 
-**Status**: ✅ **COMPLETE - Full KS10 TOPS-20 system running in browser with web interface**
+**Status**: ✅ **COMPLETE - Full KL10 TOPS-20 V7.0 system running in browser with web interface** (KS10 variant also available)
 
 ## Browser Integration - Complete Implementation ✅
 
@@ -593,8 +594,8 @@ Fixes implemented
   - Linker flags include -sASYNCIFY=1. This allows os_ttycmline() (FE command mode) to yield without blocking the browser. CTY run‑mode doesn’t require Asyncify, but it is safe and already enabled.
 
 Validation guide
-- Rebuild: emmake make -f Makefile.wasm web
-- Serve web/index.html and open in a browser.
+- Rebuild: cd build/wasm/bld-kl && emmake make
+- Run `node serve.js` and open http://localhost:8080 in a browser.
 - In the page:
   - Observe “Keys→Worker” increments as you type.
   - Observe “Worker stdin dequeues” incrementing shortly after each key; this confirms C side is pulling stdin.

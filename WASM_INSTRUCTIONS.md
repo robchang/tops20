@@ -18,22 +18,21 @@ The project has been architected to be easily ported to other Unix-like systems.
 
 ## Minimal Configuration Strategy
 - Core emulator: CPU, memory, basic I/O
-- Essential devices: Console (dvcty), DTE (dvdte)
-- Excluded: Complex device drivers (vdisk, vmtape, networking)
-- Stub implementations: Device management, process control, timing
+- Essential devices: Console (dvcty), DTE (dvdte), disk (dvrpxx/vdisk), tape (dvtm03/vmtape)
+- Excluded: Networking (dvni20), device subprocesses (fork-based drivers)
 - Browser compatibility: Focus on core functionality over Unix features
 
 # Simplifiers
 
 As this will be a standalone demo, you can use the following simplifiers:
-- Browser: Chrome only
-- Shared Memory: Not needed. You can pre-allocate necessary memory (Modern browser has plenty of scale)
-- Fork: Not needed for device drivers
-- Networking: Not needed
-- Filesystem: Ephemeral - can be RAM based
-- Signals: Only CTRL-C (SigInt) needed and possibly timers
-- Complex Devices: Exclude vdisk, vmtape, networking drivers
-- Device Processes: Minimal stubs for device management
+- Browser: Chrome only (other browsers supporting SharedArrayBuffer also work)
+- Shared Memory: SharedArrayBuffer used for ring buffer I/O between main thread and Web Worker
+- Fork: Not needed for device drivers (all device subprocesses disabled)
+- Networking: Not needed (NI20 excluded)
+- Filesystem: Ephemeral - RAM based (Emscripten MEMFS)
+- Signals: Only CTRL-C (SigInt) needed; synchronous timer polling replaces OS signals
+- Disk/Tape: vdisk and vmtape included (needed for RP07 disk and TM03 tape I/O)
+- Device Processes: Disabled (DPRPXX=0, DPTM03=0, DPNI20=0) — all I/O runs in-process
 
 # UX Requirements
 - Use xterm.js in VT100 emulation mode to display the PDP-10 console. Emulator must run in a worker thread to prevent blocking the main UX thread.
@@ -68,7 +67,7 @@ Milestone validation:
 - OS abstraction: osdsup.c compiles without platform errors
 - Build system: emconfigure generates proper config.h
 - Functionality: Console I/O working, command prompt appears
-- Final test: `node -e "require('./klh10.js');"` shows startup banner
+- Final test: `cd build/wasm/bld-kl && node serve.js` → open http://localhost:8080 → boot TOPS-20
 
 # Common Pitfalls
 
