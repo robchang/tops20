@@ -15,10 +15,11 @@ docker run -p 8080:8080 tops20
 
 Open http://localhost:8080 in your browser, then:
 
-1. Click **Start Emulator** — initializes the WebAssembly module
-2. Click **Load TOPS-20 Config** — configures virtual hardware (RP07 disk, DTE)
-3. Click **BOOT TOPS-20** — boots the operating system
-4. Login: **operator** / **dec-20**
+1. Click **Boot TOPS-20** — automatically loads the disk image, configures hardware, and boots the OS
+2. Wait ~30 seconds for TOPS-20 to boot
+3. Login: **operator** / **dec-20**
+
+An **Advanced Mode** link is available for manual step-by-step control of the emulator.
 
 The first `docker build` downloads ~320 MB of disk/tape images, so it takes a few minutes. Subsequent builds use the Docker cache.
 
