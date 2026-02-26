@@ -147,7 +147,7 @@ class KLH10WebInterface {
 
         // Initial welcome message
         this.terminal.writeln('\x1b[36mKLH10 PDP-10 Emulator - WebAssembly Port\x1b[0m');
-        this.terminal.writeln('Click "Boot TOPS-20" to begin...');
+        this.terminal.writeln('Click "Start Emulator" or "Boot TOPS-20" to begin...');
         this.terminal.writeln('');
         
         // Focus the terminal for immediate keyboard input
@@ -195,6 +195,7 @@ class KLH10WebInterface {
             document.getElementById('startBtn').disabled = true;
             
             this.terminal.writeln('Starting KLH10 emulator...');
+            this.terminal.writeln('\x1b[33mLoading disk image (~476 MB) — this may take a moment...\x1b[0m');
             this.terminal.writeln('');
 
             // Create shared WebAssembly memory (proper architecture)
@@ -254,6 +255,19 @@ class KLH10WebInterface {
                         // Echo is automatically disabled in RUN mode, enabled in CMDRUN mode
                         break;
                         
+                    case 'loading_progress':
+                        if (data.phase === 'start') {
+                            this.updateStatus('Loading disk image (~476 MB)...', 'loading');
+                        } else if (data.phase === 'downloading') {
+                            const mb = (data.loaded / 1048576).toFixed(0);
+                            const totalMb = (data.total / 1048576).toFixed(0);
+                            const pct = Math.floor((data.loaded / data.total) * 100);
+                            this.updateStatus(`Loading disk image... ${mb}/${totalMb} MB (${pct}%)`, 'loading');
+                        } else if (data.phase === 'done') {
+                            this.updateStatus('Disk image loaded, initializing emulator...', 'loading');
+                        }
+                        break;
+
                     case 'error':
                         this.updateStatus(`Error: ${data}`, 'error');
                         console.error('Emulator error:', data);
@@ -481,8 +495,8 @@ class KLH10WebInterface {
         if (index >= bootCommands.length) {
             // All commands completed
             if (!this.autoBootInProgress) {
-                this.terminal.writeln('\x1b[32mBOOT TOPS-20 sequence completed!\x1b[0m');
-                this.terminal.writeln('\x1b[33mContinue interacting with TOPS-20 system manually.\x1b[0m');
+                this.terminal.writeln('');
+                this.terminal.writeln('\x1b[32mTOPS-20 running. Type HELP for more information.\x1b[0m');
             }
             this.terminal.focus();
             if (onComplete) onComplete();
@@ -618,7 +632,7 @@ class KLH10WebInterface {
 
         this.terminal.clear();
         this.terminal.writeln('\x1b[36mKLH10 PDP-10 Emulator - WebAssembly Port\x1b[0m');
-        this.terminal.writeln('Click "Boot TOPS-20" to begin...');
+        this.terminal.writeln('Click "Start Emulator" or "Boot TOPS-20" to begin...');
         this.terminal.writeln('');
 
         this.updateStatus('Ready to start emulator', 'ready');
@@ -769,6 +783,8 @@ class KLH10WebInterface {
             // Done
             this.autoBootInProgress = false;
             this.updateStatus('TOPS-20 ready', 'ready');
+            this.terminal.writeln('');
+            this.terminal.writeln('\x1b[32mTOPS-20 running. Type HELP for more information.\x1b[0m');
             this.terminal.focus();
         } catch (error) {
             this.autoBootInProgress = false;

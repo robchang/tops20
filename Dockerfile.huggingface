@@ -1,0 +1,21 @@
+# Hugging Face Spaces Dockerfile for KLH10 TOPS-20 WebAssembly Emulator
+#
+# Deploy to HF Spaces using deploy-huggingface.sh, or manually:
+#   1. Create a Docker Space on huggingface.co
+#   2. Copy this file as "Dockerfile" into the Space repo
+#   3. Push to HF
+
+FROM node:22-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl bzip2 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .
+RUN ./download-images.sh && chown -R 1000:1000 /app
+
+USER 1000
+ENV PORT=7860
+EXPOSE 7860
+CMD ["node", "build/wasm/bld-kl/serve.js"]

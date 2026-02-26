@@ -197,15 +197,46 @@ class EmulatorWorker {
                                 }
                             }
                             
-                            // Preload Panda disk image
+                            // Preload Panda disk image with progress reporting
                             try {
                                 console.log('Worker: Loading Panda disk image: RH20.RP07.1');
+                                self.postMessage({ type: 'loading_progress', data: { file: 'RH20.RP07.1', loaded: 0, total: 0, phase: 'start' } });
                                 const response = await fetch('/RH20.RP07.1');
                                 if (response.ok) {
-                                    const arrayBuffer = await response.arrayBuffer();
-                                    const uint8Array = new Uint8Array(arrayBuffer);
-                                    this.Module.FS.writeFile('RH20.RP07.1', uint8Array);
-                                    console.log('Worker: Panda disk image loaded:', uint8Array.length, 'bytes');
+                                    const contentLength = parseInt(response.headers.get('Content-Length') || '0', 10);
+                                    if (contentLength > 0 && response.body) {
+                                        // Stream with progress
+                                        const reader = response.body.getReader();
+                                        const chunks = [];
+                                        let loaded = 0;
+                                        let lastReportedPct = -1;
+                                        while (true) {
+                                            const { done, value } = await reader.read();
+                                            if (done) break;
+                                            chunks.push(value);
+                                            loaded += value.length;
+                                            const pct = Math.floor((loaded / contentLength) * 100);
+                                            if (pct !== lastReportedPct) {
+                                                lastReportedPct = pct;
+                                                self.postMessage({ type: 'loading_progress', data: { file: 'RH20.RP07.1', loaded, total: contentLength, phase: 'downloading' } });
+                                            }
+                                        }
+                                        const uint8Array = new Uint8Array(loaded);
+                                        let offset = 0;
+                                        for (const chunk of chunks) {
+                                            uint8Array.set(chunk, offset);
+                                            offset += chunk.length;
+                                        }
+                                        this.Module.FS.writeFile('RH20.RP07.1', uint8Array);
+                                        console.log('Worker: Panda disk image loaded:', uint8Array.length, 'bytes');
+                                    } else {
+                                        // Fallback: no Content-Length, load all at once
+                                        const arrayBuffer = await response.arrayBuffer();
+                                        const uint8Array = new Uint8Array(arrayBuffer);
+                                        this.Module.FS.writeFile('RH20.RP07.1', uint8Array);
+                                        console.log('Worker: Panda disk image loaded:', uint8Array.length, 'bytes');
+                                    }
+                                    self.postMessage({ type: 'loading_progress', data: { file: 'RH20.RP07.1', loaded: contentLength, total: contentLength, phase: 'done' } });
                                 } else {
                                     console.error('Worker: Could not load Panda disk image RH20.RP07.1');
                                 }

@@ -1,8 +1,10 @@
 # KLH10 — Run TOPS-20 in Your Browser
 
-An agentic coding experiment by **Rob Chang** — a PDP-10 emulator ported to WebAssembly via AI-assisted development that boots DEC TOPS-20 V7.0 with an interactive terminal in your browser.
+An agentic coding experiment by **Rob Chang** — a complete PDP-10 mainframe running entirely standalone in your browser. No server-side processing, no backend — the full KLH10 emulator is compiled to WebAssembly and executes locally, booting DEC TOPS-20 V7.0 with an interactive terminal.
 
-This is a WebAssembly port of Kenneth L. Harrenstien's [KLH10](https://github.com/PDP-10/klh10) PDP-10 emulator, running Mark Crispin's [Panda TOPS-20](https://panda.trailing-edge.com/) distribution — an enhanced version of DEC's TOPS-20 operating system with bugfixes, Stanford extensions, and bundled software.
+Built on Kenneth L. Harrenstien's [KLH10](https://github.com/PDP-10/klh10) emulator and Mark Crispin's [Panda TOPS-20](https://panda.trailing-edge.com/) distribution, the entire machine — CPU, memory, disk controller, and 476 MB disk image — runs in a Web Worker inside your browser.
+
+**[Live Demo](https://robchang-tops20.hf.space)** — boots TOPS-20 in your browser, no install needed
 
 ## Quick Start
 
