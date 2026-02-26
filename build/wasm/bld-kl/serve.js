@@ -60,7 +60,7 @@ const server = http.createServer((req, res) => {
             res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
             res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
             
-            res.writeHead(200, { 'Content-Type': contentType });
+            res.writeHead(200, { 'Content-Type': contentType, 'Content-Length': content.length });
             res.end(content);
         }
     });
