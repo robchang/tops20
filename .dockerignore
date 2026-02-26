@@ -5,3 +5,5 @@ node_modules/
 *.tap
 build/wasm/bld-*/RH20.*
 build/wasm/bld-*/*-dbd9
+.env*
+.DS_Store

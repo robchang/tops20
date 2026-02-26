@@ -1,6 +1,6 @@
 # KLH10 — Run TOPS-20 in Your Browser
 
-An agentic coding experiment by **Rob Chang** — a complete PDP-10 mainframe running entirely standalone in your browser. No server-side processing, no backend — the full KLH10 emulator is compiled to WebAssembly and executes locally, booting DEC TOPS-20 V7.0 with an interactive terminal.
+An agentic coding experiment — a complete PDP-10 mainframe running entirely standalone in your browser. No server-side processing, no backend — the full KLH10 emulator is compiled to WebAssembly and executes locally, booting DEC TOPS-20 V7.0 with an interactive terminal.
 
 Built on Kenneth L. Harrenstien's [KLH10](https://github.com/PDP-10/klh10) emulator and Mark Crispin's [Panda TOPS-20](https://panda.trailing-edge.com/) distribution, the entire machine — CPU, memory, disk controller, and 476 MB disk image — runs in a Web Worker inside your browser.
 
@@ -177,6 +177,10 @@ klh10/
 ├── configure.ac                  # Autotools configuration
 └── README                        # Original KLH10 readme with credits
 ```
+
+## Built with Claude Code
+
+This project was built almost entirely through [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Anthropic's agentic coding tool. The original KLH10 is ~68,000 lines of C targeting Linux/macOS. Claude Code handled the Emscripten cross-compilation, SharedArrayBuffer I/O architecture, web frontend, build system, Dockerfiles, and deployment — plus debugging issues from filesystem race conditions to virtual disk bad block errors. The human role was directing what to build, architectural guidance (particularly the SharedArrayBuffer ring buffer I/O design), testing, and UX decisions.
 
 ## Credits
 

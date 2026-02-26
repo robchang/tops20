@@ -48,6 +48,9 @@ build/wasm/bld-*/config.h
 # Panda distribution documentation
 Panda-doc/
 
+# OS artifacts
+.DS_Store
+
 # Node.js dependencies
 node_modules/
 package-lock.json
