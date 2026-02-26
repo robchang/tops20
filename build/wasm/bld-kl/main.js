@@ -795,7 +795,34 @@ class KLH10WebInterface {
     }
 }
 
+// Check browser compatibility before initializing
+function checkBrowserCompatibility() {
+    const missing = [];
+    if (typeof WebAssembly === 'undefined') missing.push('WebAssembly');
+    if (typeof SharedArrayBuffer === 'undefined') missing.push('SharedArrayBuffer');
+    if (typeof Worker === 'undefined') missing.push('Web Workers');
+    return missing;
+}
+
 // Initialize the interface when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    const missing = checkBrowserCompatibility();
+    if (missing.length > 0) {
+        const status = document.getElementById('status');
+        status.textContent = 'Browser not compatible';
+        status.className = 'status error';
+        const controls = document.getElementById('simpleControls');
+        controls.innerHTML = `
+            <div style="max-width: 500px; margin: 0 auto; text-align: left; background: #2a1a1a; border: 1px solid #e57373; border-radius: 8px; padding: 20px;">
+                <p style="color: #e57373; margin-top: 0;"><strong>Missing browser features:</strong> ${missing.join(', ')}</p>
+                <p style="color: #ccc; margin-bottom: 8px;">This emulator requires a modern browser with SharedArrayBuffer support. Compatible browsers:</p>
+                <ul style="color: #ccc; margin: 0; padding-left: 20px;">
+                    <li>Chrome / Edge 91+</li>
+                    <li>Firefox 79+</li>
+                    <li>Safari 15.2+</li>
+                </ul>
+            </div>`;
+        return;
+    }
     new KLH10WebInterface();
 });
