@@ -24,7 +24,7 @@ Open http://localhost:8080 in your browser, then:
    - `emacs` — run the EMACS text editor
    - `systat` — show system status
    - `help` — TOPS-20 help system
-   - `dir <games>*.exe` — list games (try `<games>trek`)
+   - `dir <games>*.exe` — list games 
    - `dir <subsys>*.exe` — list editors, compilers, and utilities
 
 An **Advanced Mode** link is available for manual step-by-step control of the emulator.
