@@ -148,7 +148,7 @@ c543517319a2b37025531f7d798ebb74  panda.tap
 
 ### About the Panda Distribution
 
-The [Panda TOPS-20 distribution](https://panda.trailing-edge.com/) was created by Mark Crispin (1langstraat@... at University of Washington). It includes an enhanced TOPS-20 with bugfixes originating from Stanford in the 1970s-80s, plus a library of third-party software. The pre-built RP07 disk image provides a complete, ready-to-boot system.
+The [Panda TOPS-20 distribution](https://panda.trailing-edge.com/) was created by the late Mark Crispin (1langstraat@... at University of Washington). It includes an enhanced TOPS-20 with bugfixes originating from Stanford in the 1970s-80s, plus a library of third-party software. The pre-built RP07 disk image provides a complete, ready-to-boot system.
 
 - Panda distribution archive: https://panda.trailing-edge.com/
 - Panda source on GitHub: https://github.com/PDP-10/panda
