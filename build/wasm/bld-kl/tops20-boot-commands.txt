@@ -18,7 +18,7 @@
 # - {nocr} prevents the automatic \r that is normally added to each command
 # - Terminal echo is enabled by default; use {echo off} to hide typed input
 # - {echo on/off} only affect keyboard input visibility, not script commands
-# 0. GO
+# 0. Boot TOPS-20
 go
 {echo off}
 {cr}
@@ -31,3 +31,26 @@ no
 log operator dec-20
 enable
 terminal vt100
+# 1. Restore pre-built Rogue from tape
+{wait 3}
+BUILD PS:<ROGUE>
+{cr}
+{cr}
+{cr}
+{cr}
+{cr}
+{cr}
+{cr}
+{cr}
+{cr}
+{cr}
+{wait 5}
+DUMPER
+{wait 3}
+TAPE MTA0:
+{wait 1}
+RESTORE PS:<ROGUE>*.*
+{wait 30}
+EXIT
+{wait 2}
+CONNECT PS:<ROGUE>

@@ -158,6 +158,7 @@ class EmulatorWorker {
                             
                             // Preload all available .tap files
                             const potentialTapes = [
+                                'rogue.tap',
                             ];
                             
                             for (const tapeFile of potentialTapes) {
@@ -400,7 +401,7 @@ self.onmessage = async (event) => {
         case 'mode_change':
             worker.sendMessage('mode_change', data);
             break;
-            
+
         default:
             worker.sendMessage('error', `Unknown message type: ${type}`);
     }
