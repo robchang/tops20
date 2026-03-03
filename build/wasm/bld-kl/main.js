@@ -786,6 +786,9 @@ class KLH10WebInterface {
             this.terminal.writeln('');
             this.terminal.writeln('\x1b[32mTOPS-20 ready. Type HELP for more information.\x1b[0m');
             this.terminal.focus();
+            // Ensure focus by clicking the terminal element (some browsers need this)
+            document.getElementById('terminal').click();
+            this.terminal.focus();
         } catch (error) {
             this.autoBootInProgress = false;
             overlay.style.display = 'none';
