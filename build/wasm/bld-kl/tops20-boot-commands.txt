@@ -50,7 +50,7 @@ DUMPER
 TAPE MTA0:
 {wait 1}
 RESTORE PS:<ROGUE>*.*
-{wait 30}
+{wait 10}
 EXIT
 {wait 2}
 CONNECT PS:<ROGUE>

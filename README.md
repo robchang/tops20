@@ -20,7 +20,7 @@ Open http://localhost:8080 in your browser, then:
 1. Click **Boot TOPS-20** — automatically loads the disk image, configures hardware, boots the OS, and logs in
 2. Wait ~30 seconds for the boot sequence to complete
 3. Try some commands:
-   - `advent` — play the classic Colossal Cave Adventure
+   - `rogue` — play the classic dungeon crawler Rogue
    - `emacs` — run the EMACS text editor
    - `systat` — show system status
    - `help` — TOPS-20 help system

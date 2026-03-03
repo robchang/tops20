@@ -195,7 +195,6 @@ class KLH10WebInterface {
             document.getElementById('startBtn').disabled = true;
             
             this.terminal.writeln('Starting KLH10 emulator...');
-            this.terminal.writeln('\x1b[33mLoading disk image (~476 MB) — this may take a moment...\x1b[0m');
             this.terminal.writeln('');
 
             // Create shared WebAssembly memory (proper architecture)
@@ -761,33 +760,35 @@ class KLH10WebInterface {
     async autoBoot() {
         this.autoBootInProgress = true;
         document.getElementById('autoBootBtn').disabled = true;
+        const overlay = document.getElementById('bootOverlay');
+        overlay.style.display = 'flex';
 
         try {
             // Step 1: Start emulator
-            this.updateStatus('Initializing emulator... please wait', 'loading');
+            this.updateStatus('Initializing emulator...', 'loading');
             await this.startEmulator();
 
             // Step 2: Wait for worker to be ready (loads WASM + disk image)
-            this.terminal.writeln('\x1b[33mPlease wait — loading disk image (~476 MB)...\x1b[0m');
             await this.waitForReady();
 
             // Step 3: Load config
-            this.updateStatus('Configuring virtual hardware... please wait', 'loading');
+            this.updateStatus('Configuring virtual hardware...', 'loading');
             await this.loadInstallationConfigAsync();
 
             // Step 4: Boot
-            this.updateStatus('Booting TOPS-20... please wait', 'loading');
-            this.terminal.writeln('\x1b[33mPlease wait — TOPS-20 is booting...\x1b[0m');
+            this.updateStatus('Booting TOPS-20...', 'loading');
             await this.bootTops20Async();
 
             // Done
             this.autoBootInProgress = false;
+            overlay.style.display = 'none';
             this.updateStatus('TOPS-20 ready', 'ready');
             this.terminal.writeln('');
-            this.terminal.writeln('\x1b[32mTOPS-20 running. Type HELP for more information.\x1b[0m');
+            this.terminal.writeln('\x1b[32mTOPS-20 ready. Type HELP for more information.\x1b[0m');
             this.terminal.focus();
         } catch (error) {
             this.autoBootInProgress = false;
+            overlay.style.display = 'none';
             this.updateStatus(`Boot failed: ${error.message}`, 'error');
             document.getElementById('autoBootBtn').disabled = false;
             console.error('Auto-boot failed:', error);
