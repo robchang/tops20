@@ -59,10 +59,11 @@ const server = http.createServer((req, res) => {
             }
         } else {
             // Set CORS headers for SharedArrayBuffer support
-            // Use 'credentialless' instead of 'require-corp' to allow iframe embedding (e.g. HF Spaces)
+            // CORP 'cross-origin' allows iframe embedding (e.g. HF Spaces)
+            // COEP must be 'require-corp' (not 'credentialless') for Safari SharedArrayBuffer support
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-            res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+            res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
             res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
             
             res.writeHead(200, { 'Content-Type': contentType, 'Content-Length': content.length });
