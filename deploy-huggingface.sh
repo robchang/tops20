@@ -91,7 +91,7 @@ echo "  .dockerignore"
 mkdir -p "$DEPLOY_DIR/build/wasm/bld-kl"
 for f in index.html main.js emulator-worker.js kn10-kl.js kn10-kl.wasm \
          serve.js tops20-config-commands.txt tops20-boot-commands.txt \
-         boot.sav mtboot.sav; do
+         boot.sav mtboot.sav rogue.tap; do
     if [ -f "$SCRIPT_DIR/build/wasm/bld-kl/$f" ]; then
         cp "$SCRIPT_DIR/build/wasm/bld-kl/$f" "$DEPLOY_DIR/build/wasm/bld-kl/$f"
         echo "  build/wasm/bld-kl/$f"
