@@ -72,7 +72,7 @@ find "$DEPLOY_DIR" -mindepth 1 -maxdepth 1 -not -name '.git' -not -name '.gitatt
 # Ensure git-lfs is initialized and .gitattributes tracks binary files
 cd "$DEPLOY_DIR"
 git lfs install --local 2>/dev/null || true
-git lfs track "*.wasm" "*.sav" 2>/dev/null || true
+git lfs track "*.wasm" "*.sav" "*.tap" 2>/dev/null || true
 cd "$SCRIPT_DIR"
 
 # Copy Dockerfile (renamed from Dockerfile.huggingface)
