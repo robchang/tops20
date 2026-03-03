@@ -56,8 +56,9 @@ const server = http.createServer((req, res) => {
             }
         } else {
             // Set CORS headers for SharedArrayBuffer support
+            // Use 'credentialless' instead of 'require-corp' to allow iframe embedding (e.g. HF Spaces)
             res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+            res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
             res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
             
             res.writeHead(200, { 'Content-Type': contentType, 'Content-Length': content.length });
