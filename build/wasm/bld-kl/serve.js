@@ -15,7 +15,10 @@ const mimeTypes = {
     '.css': 'text/css',
     '.ico': 'image/x-icon',
     '.tap': 'application/octet-stream',
-    '.sav': 'application/octet-stream'
+    '.sav': 'application/octet-stream',
+    '.webp': 'image/webp',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg'
 };
 
 // Special handling for Emscripten generated files

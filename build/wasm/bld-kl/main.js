@@ -78,14 +78,14 @@ class KLH10WebInterface {
     }
 
     initializeTerminal() {
-        // Create xterm.js terminal
+        // Create xterm.js terminal with green phosphor CRT theme
         this.terminal = new Terminal({
             theme: {
                 background: '#000000',
-                foreground: '#ffffff',
-                cursor: '#ffffff',
+                foreground: '#33ff33',
+                cursor: '#33ff33',
                 cursorAccent: '#000000',
-                selection: '#44475a',
+                selection: '#005500',
             },
             fontFamily: 'Consolas, "Courier New", monospace',
             fontSize: 14,
@@ -102,8 +102,7 @@ class KLH10WebInterface {
 
         // Open terminal in DOM
         this.terminal.open(document.getElementById('terminal'));
-        this.fitAddon.fit();
-        this.terminal.resize(this.terminal.cols, 24);
+        this.adjustTerminalToScreen();
 
         // Handle terminal input
         this.terminal.onData((data) => {
@@ -139,14 +138,23 @@ class KLH10WebInterface {
             }
         });
 
-        // Handle window resize (fit width, keep 24 rows)
+        // Handle window resize
         window.addEventListener('resize', () => {
-            this.fitAddon.fit();
-            this.terminal.resize(this.terminal.cols, 24);
+            this.adjustTerminalToScreen();
         });
 
+        // Re-adjust terminal when VT100 frame image loads
+        const vt100Img = document.querySelector('.vt100-image');
+        if (vt100Img) {
+            if (vt100Img.complete) {
+                this.adjustTerminalToScreen();
+            } else {
+                vt100Img.addEventListener('load', () => this.adjustTerminalToScreen());
+            }
+        }
+
         // Initial welcome message
-        this.terminal.writeln('\x1b[36mKLH10 PDP-10 Emulator - WebAssembly Port\x1b[0m');
+        this.terminal.writeln('\x1b[32mKLH10 PDP-10 Emulator - WebAssembly Port\x1b[0m');
         this.terminal.writeln('Click "Start Emulator" or "Boot TOPS-20" to begin...');
         this.terminal.writeln('');
         
@@ -154,7 +162,50 @@ class KLH10WebInterface {
         this.terminal.focus();
     }
 
+    adjustTerminalToScreen() {
+        const frame = document.getElementById('vt100Frame');
+        const isFrameless = !frame || frame.classList.contains('frameless');
+
+        if (isFrameless) {
+            // Frameless mode: use default font size and let fitAddon handle it
+            this.terminal.options.fontSize = 14;
+            this.fitAddon.fit();
+            this.terminal.resize(this.terminal.cols, 24);
+            return;
+        }
+
+        const screenEl = document.querySelector('.vt100-screen');
+        if (!screenEl) return;
+
+        const screenWidth = screenEl.clientWidth;
+        const screenHeight = screenEl.clientHeight;
+
+        if (screenWidth === 0 || screenHeight === 0) return;
+
+        // Calculate font size that fits 80x24 in the screen area
+        // Cell dimensions are approximately: width ~ fontSize * 0.6, height ~ fontSize * 1.2
+        const maxByWidth = screenWidth / (80 * 0.6);
+        const maxByHeight = screenHeight / (24 * 1.2);
+        const fontSize = Math.max(8, Math.min(Math.floor(Math.min(maxByWidth, maxByHeight)), 20));
+
+        this.terminal.options.fontSize = fontSize;
+        this.fitAddon.fit();
+        this.terminal.resize(80, 24);
+    }
+
     setupEventListeners() {
+        // VT100 frame toggle
+        const toggleLink = document.getElementById('toggleFrame');
+        if (toggleLink) {
+            toggleLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                const frame = document.getElementById('vt100Frame');
+                frame.classList.toggle('frameless');
+                e.target.textContent = frame.classList.contains('frameless') ? 'Show Terminal Frame' : 'Hide Terminal Frame';
+                setTimeout(() => this.adjustTerminalToScreen(), 50);
+            });
+        }
+
         // Simple mode
         document.getElementById('autoBootBtn').addEventListener('click', () => this.autoBoot());
         document.getElementById('showAdvanced').addEventListener('click', (e) => {
