@@ -12,17 +12,20 @@ Tools for rebuilding the pre-built `rogue.tap` tape image.
 Prerequisites: `npm install playwright && npx playwright install chromium`
 
 ```bash
-# 1. Create a source tape from rogue-src/ files
+# 1. Clone the Rogue source
+git clone https://github.com/PDP-10/rogue.git rogue-src
+
+# 2. Create a source tape from the cloned files
 node tools/create-dumper-tape.mjs build/wasm/bld-kl/rogue.tap \
   "rogue-src/rogue.pas:ROGUE.PAS" \
   "rogue-src/rogue.constants:ROGUE.CONSTANTS" \
   "rogue-src/extern.mac:EXTERN.MAC" \
   "rogue-src/rogue.configuration:ROGUE.CONFIGURATION"
 
-# 2. Start the dev server
+# 3. Start the dev server
 npm start &
 
-# 3. Build the EXE inside the emulator and capture the result
+# 4. Build the EXE inside the emulator and capture the result
 node tools/build-rogue-exe.mjs
 
 # Output: build/wasm/bld-kl/rogue.tap (pre-built EXE + config files)
@@ -30,5 +33,5 @@ node tools/build-rogue-exe.mjs
 
 ## Rogue source
 
-The `rogue-src/` directory contains the original TOPS-20 Rogue source code
-(Pascal + MACRO assembly). See `rogue-src/PROVENANCE.md` for attribution.
+The original TOPS-20 Rogue source code (Pascal + MACRO assembly) is at:
+https://github.com/PDP-10/rogue
