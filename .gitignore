@@ -51,6 +51,10 @@ build/wasm/bld-*/config.h
 # Panda distribution documentation
 Panda-doc/
 
+# Editor/IDE settings
+.vscode/
+.claude/
+
 # OS artifacts
 .DS_Store
 
