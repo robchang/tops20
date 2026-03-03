@@ -1121,11 +1121,13 @@ os_ttycmchar(void)
 char *
 os_ttycmline(char *buffer, int size)
 {
+#if CENV_SYS_EMSCRIPTEN
     EM_ASM({
         console.log('[DEBUG WASM] ============================================');
         console.log('[DEBUG WASM] os_ttycmline() CALLED! buffer size=' + $0);
         console.log('[DEBUG WASM] ============================================');
     }, size);
+#endif
 
 #if CENV_SYS_MAC && CENV_USE_COMM_TOOLBOX
   {
