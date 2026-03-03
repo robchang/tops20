@@ -1,0 +1,21 @@
+;Configuration for ROGUE on Panda TOPS-20
+;Modified for browser-based TOPS-20 emulator
+
+VT52 17
+HEATH-19 31
+ANSI 20				;Vt100
+ANSI 37				;Ambassador
+DATAMEDIA-2500 5
+CONCEPT-108 32
+HAZELTINE-1500 7
+HP26XX 6
+
+;Score and log files in the ROGUE directory
+SCORE-FILE Ps:<Rogue>Igfoo.Bin
+LOG-FILE Ps:<Rogue>Igfoo.Log
+NAMES-FILE Ps:<Rogue>Igfoo.Nam
+MESSAGE-FILE Ps:<Rogue>Igfoo.Msg
+;The load average at which to quit games.
+LOAD-AVERAGE 0			; 0 means don't check
+;and mailing address for BUGS
+BUG-ADDRESS OPERATOR
