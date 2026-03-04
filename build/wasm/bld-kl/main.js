@@ -136,8 +136,20 @@ class KLH10WebInterface {
 
         // Handle window resize
         window.addEventListener('resize', () => {
+            this.adjustMobileLayout();
             this.adjustTerminalToScreen();
         });
+
+        // Set initial mobile layout height
+        this.adjustMobileLayout();
+
+        // Handle mobile soft keyboard open/close
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                this.adjustMobileLayout();
+                this.adjustTerminalToScreen();
+            });
+        }
 
         // Re-adjust terminal when VT100 frame image loads
         const vt100Img = document.querySelector('.vt100-image');
@@ -158,17 +170,20 @@ class KLH10WebInterface {
         this.terminal.focus();
     }
 
+    // On mobile, set explicit container height from visualViewport (CSS dvh unreliable in iframes)
+    isMobileLayout() {
+        return window.innerWidth <= 600 || window.innerHeight <= 450;
+    }
+
+    adjustMobileLayout() {
+        if (!this.isMobileLayout()) return;
+        const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        document.body.style.height = vh + 'px';
+    }
+
     adjustTerminalToScreen() {
         const frame = document.getElementById('vt100Frame');
         const isFrameless = !frame || frame.classList.contains('frameless');
-
-        if (isFrameless) {
-            // Frameless mode: use default font size and let fitAddon handle it
-            this.terminal.options.fontSize = 14;
-            this.fitAddon.fit();
-            this.terminal.resize(this.terminal.cols, 24);
-            return;
-        }
 
         const screenEl = document.querySelector('.vt100-screen');
         if (!screenEl) return;
@@ -889,6 +904,12 @@ class KLH10WebInterface {
             this.autoBootInProgress = false;
             overlay.style.display = 'none';
             this.updateStatus('TOPS-20 ready', 'ready');
+
+            // On mobile, hide controls to reclaim space for terminal
+            if (this.isMobileLayout()) {
+                document.getElementById('simpleControls').style.display = 'none';
+                this.adjustTerminalToScreen();
+            }
             this.terminal.writeln('');
             this.terminal.writeln('\x1b[32mTOPS-20 ready. Type HELP for more information.\x1b[0m');
             this.terminal.focus();
