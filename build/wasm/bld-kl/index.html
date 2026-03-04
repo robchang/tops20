@@ -195,11 +195,51 @@
             .vt100-screen::before { display: none; }
         }
 
+        /* ============================================
+           Special Key Toolbar (mobile + optional desktop)
+           ============================================ */
+        .key-toolbar {
+            display: none;
+            gap: 6px;
+            padding: 8px 4px;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .key-toolbar button {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            color: #4fc3f7;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 6px;
+            min-width: 44px;
+            height: 44px;
+            padding: 0 10px;
+            cursor: pointer;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        .key-toolbar button:active {
+            background: #4fc3f7;
+            color: #000;
+        }
+        .key-toolbar .key-ctrl.active {
+            background: #4fc3f7;
+            color: #000;
+            border-color: #4fc3f7;
+        }
+        @media (max-width: 600px) {
+            .key-toolbar { display: flex; }
+        }
+
         /* Boot overlay */
         .boot-overlay {
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.75);
+            background: rgba(0, 0, 0, 0.35);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -258,8 +298,22 @@
                 <div id="terminal"></div>
             </div>
         </div>
+        <div class="key-toolbar" id="keyToolbar">
+            <button data-key="esc">Esc</button>
+            <button data-key="tab">Tab</button>
+            <button data-key="ctrl" class="key-ctrl">Ctrl</button>
+            <button data-key="up">&#x2191;</button>
+            <button data-key="down">&#x2193;</button>
+            <button data-key="left">&#x2190;</button>
+            <button data-key="right">&#x2192;</button>
+            <button data-key="ctrl-c">^C</button>
+            <button data-key="ctrl-z">^Z</button>
+            <button data-key="ctrl-d">^D</button>
+        </div>
         <div class="mode-toggle" style="text-align: center; margin-bottom: 16px;">
             <a href="#" id="toggleFrame">Hide Terminal Frame</a>
+            &nbsp;&middot;&nbsp;
+            <a href="#" id="toggleKeybar">Show Key Toolbar</a>
         </div>
 
         <div style="text-align: center; font-size: 13px; color: #999; margin-top: 20px;">

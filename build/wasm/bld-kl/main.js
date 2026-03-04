@@ -108,6 +108,14 @@ class KLH10WebInterface {
         this.terminal.onData((data) => {
             if (this.autoBootInProgress) return; // Block input during auto-boot
             if (this.worker && this.emulatorReady && this.inputRingBuffer) {
+                // Apply Ctrl sticky modifier from key toolbar
+                if (this.ctrlActive && data.length === 1 && data >= '@' && data <= '~') {
+                    data = String.fromCharCode(data.toUpperCase().charCodeAt(0) - 64);
+                    this.ctrlActive = false;
+                    const ctrlBtn = document.querySelector('.key-ctrl');
+                    if (ctrlBtn) ctrlBtn.classList.remove('active');
+                }
+
                 // Echo input based on both mode and echo setting
                 if (this.inRuncmdMode && this.terminalEchoEnabled) {
                     // Handle special characters
@@ -121,20 +129,8 @@ class KLH10WebInterface {
                         this.terminal.write(data);
                     }
                 }
-                
-                // Write directly to WASM memory ring buffer - true zero-copy!
-                
-                
-                for (let i = 0; i < data.length; i++) {
-                    const char = data[i];
-                    const success = this.inputRingBuffer.writeInputChar(char);
-                    
-                    
-                    if (!success) {
-                        console.warn('Main: Input ring buffer full, character dropped');
-                        break;
-                    }
-                }
+
+                this.sendInput(data);
             }
         });
 
@@ -186,11 +182,23 @@ class KLH10WebInterface {
         // Cell dimensions are approximately: width ~ fontSize * 0.6, height ~ fontSize * 1.2
         const maxByWidth = screenWidth / (80 * 0.6);
         const maxByHeight = screenHeight / (24 * 1.2);
-        const fontSize = Math.max(8, Math.min(Math.floor(Math.min(maxByWidth, maxByHeight)), 20));
+        const fontSize = Math.max(4, Math.min(Math.floor(Math.min(maxByWidth, maxByHeight)), 32));
 
         this.terminal.options.fontSize = fontSize;
         this.fitAddon.fit();
         this.terminal.resize(80, 24);
+    }
+
+    // Send input data to the emulator via ring buffer
+    sendInput(data) {
+        if (!this.worker || !this.emulatorReady || !this.inputRingBuffer) return;
+        for (let i = 0; i < data.length; i++) {
+            const char = data[i];
+            if (!this.inputRingBuffer.writeInputChar(char)) {
+                console.warn('Main: Input ring buffer full, character dropped');
+                break;
+            }
+        }
     }
 
     setupEventListeners() {
@@ -203,6 +211,53 @@ class KLH10WebInterface {
                 frame.classList.toggle('frameless');
                 e.target.textContent = frame.classList.contains('frameless') ? 'Show Terminal Frame' : 'Hide Terminal Frame';
                 setTimeout(() => this.adjustTerminalToScreen(), 50);
+            });
+        }
+
+        // Key toolbar toggle (desktop)
+        const keybarToggle = document.getElementById('toggleKeybar');
+        if (keybarToggle) {
+            keybarToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                const toolbar = document.getElementById('keyToolbar');
+                const isVisible = toolbar.style.display === 'flex';
+                toolbar.style.display = isVisible ? '' : 'flex';
+                e.target.textContent = isVisible ? 'Show Key Toolbar' : 'Hide Key Toolbar';
+            });
+        }
+
+        // Key toolbar buttons
+        this.ctrlActive = false;
+        const keyToolbar = document.getElementById('keyToolbar');
+        if (keyToolbar) {
+            const keyMap = {
+                'esc': '\x1b',
+                'tab': '\t',
+                'up': '\x1b[A',
+                'down': '\x1b[B',
+                'left': '\x1b[D',
+                'right': '\x1b[C',
+                'ctrl-c': '\x03',
+                'ctrl-z': '\x1a',
+                'ctrl-d': '\x04',
+            };
+
+            keyToolbar.addEventListener('click', (e) => {
+                const btn = e.target.closest('button');
+                if (!btn) return;
+                e.preventDefault();
+
+                const key = btn.dataset.key;
+                if (key === 'ctrl') {
+                    // Toggle Ctrl sticky modifier
+                    this.ctrlActive = !this.ctrlActive;
+                    btn.classList.toggle('active', this.ctrlActive);
+                } else if (keyMap[key]) {
+                    this.sendInput(keyMap[key]);
+                }
+
+                // Refocus terminal so soft keyboard stays open
+                this.terminal.focus();
             });
         }
 
