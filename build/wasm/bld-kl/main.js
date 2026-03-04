@@ -182,30 +182,26 @@ class KLH10WebInterface {
     }
 
     adjustTerminalToScreen() {
-        const frame = document.getElementById('vt100Frame');
-        const isFrameless = !frame || frame.classList.contains('frameless');
-
         const screenEl = document.querySelector('.vt100-screen');
         if (!screenEl) return;
 
-        const screenWidth = screenEl.clientWidth;
-        const screenHeight = screenEl.clientHeight;
+        if (screenEl.clientWidth === 0 || screenEl.clientHeight === 0) return;
 
-        if (screenWidth === 0 || screenHeight === 0) return;
+        // Binary search for the largest font size where 80x24 fits in the container
+        let lo = 4, hi = 32;
+        while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            this.terminal.options.fontSize = mid;
+            this.fitAddon.fit();
+            if (this.terminal.cols >= 80 && this.terminal.rows >= 24) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
 
-        // Calculate font size that fits 80x24 in the screen area
-        // Use actual cell dimensions from xterm if available, otherwise approximate
-        const cellWidth = this.terminal._core?._renderService?.dimensions?.css?.cell?.width || (this.terminal.options.fontSize * 0.6);
-        const cellHeight = this.terminal._core?._renderService?.dimensions?.css?.cell?.height || (this.terminal.options.fontSize * 1.2);
-        const charRatio = cellWidth / cellHeight;
-
-        // Calculate max font size by width and height constraints
-        const maxByWidth = screenWidth / (80 * (cellWidth / this.terminal.options.fontSize));
-        const maxByHeight = screenHeight / (24 * (cellHeight / this.terminal.options.fontSize));
-        const fontSize = Math.max(4, Math.min(Math.floor(Math.min(maxByWidth, maxByHeight)), 32));
-
-        this.terminal.options.fontSize = fontSize;
-        // Always force exactly 80x24 — don't let fitAddon choose different dimensions
+        this.terminal.options.fontSize = lo;
+        this.fitAddon.fit();
         this.terminal.resize(80, 24);
     }
 
