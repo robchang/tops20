@@ -210,9 +210,10 @@ class KLH10WebInterface {
             const toolbarH = document.getElementById('keyToolbar')?.offsetHeight || 0;
             const statusH = document.querySelector('.status')?.offsetHeight || 0;
             const controlsH = document.getElementById('simpleControls')?.offsetHeight || 0;
+            const imgH = document.querySelector('.vt100-image')?.offsetHeight || 0;
             const screenPad = 10; // .vt100-screen padding + border
             const bodyPad = 12;   // body padding + margins
-            const availH = vh - toolbarH - statusH - controlsH - screenPad - bodyPad;
+            const availH = vh - toolbarH - statusH - controlsH - imgH - screenPad - bodyPad;
             const cellHPerPx = cellH / probeSize; // cell height per 1px of font size
             const fontByHeight = availH > 0
                 ? Math.floor(availH / (24 * cellHPerPx))

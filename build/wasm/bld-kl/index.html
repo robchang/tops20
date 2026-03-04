@@ -202,7 +202,20 @@
                 margin: 0;
                 aspect-ratio: auto;
             }
-            .vt100-image { display: none; }
+            .vt100-image {
+                position: static;
+                width: auto;
+                max-height: 80px;
+                margin: 4px auto;
+                border-radius: 6px;
+                opacity: 0.5;
+                mask-image: none;
+                -webkit-mask-image: none;
+            }
+            /* Hide decorative image when height is tight (landscape, keyboard open) */
+            @media (max-height: 500px) {
+                .vt100-image { display: none; }
+            }
             .vt100-screen {
                 position: relative;
                 left: 0; top: 0;
