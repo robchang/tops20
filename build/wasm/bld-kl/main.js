@@ -265,7 +265,9 @@ class KLH10WebInterface {
                 const frame = document.getElementById('vt100Frame');
                 frame.classList.toggle('frameless');
                 e.target.textContent = frame.classList.contains('frameless') ? 'Show Terminal Frame' : 'Hide Terminal Frame';
-                setTimeout(() => this.adjustTerminalToScreen(), 50);
+                // Force synchronous reflow so measurements reflect the new layout
+                void frame.offsetHeight;
+                this.adjustTerminalToScreen();
             });
         }
 

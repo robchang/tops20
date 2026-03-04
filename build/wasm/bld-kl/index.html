@@ -162,6 +162,12 @@
             display: none;
         }
         .vt100-frame.frameless .vt100-screen-mask { display: none; }
+        .vt100-frame.frameless #terminal {
+            height: auto;
+        }
+        .vt100-frame.frameless .vt100-screen .xterm {
+            height: auto !important;
+        }
 
         /* Black mask to hide original photo text on the CRT */
         .vt100-screen-mask {
