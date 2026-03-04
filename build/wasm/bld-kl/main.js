@@ -92,7 +92,7 @@ class KLH10WebInterface {
             cursorBlink: true,
             cols: 80,
             rows: 24,
-            convertEol: true,  // Convert \n to \r\n for proper line breaks
+            convertEol: false, // TOPS-20 sends CR+LF; bare LF must not auto-CR (Rogue uses bare LF for cursor-down)
             windowsMode: false // Keep Unix-style line endings in input
         });
 
