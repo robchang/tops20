@@ -54,6 +54,8 @@
         .status.ready { color: #81c784; }
         .status.error { color: #e57373; }
 
+        .mobile-info-toggle { display: none; }
+
         /* ============================================
            VT100 Terminal Frame — Photo Mode
            ============================================ */
@@ -239,6 +241,14 @@
             .key-toolbar button { height: 36px; min-width: 36px; font-size: 12px; padding: 0 6px; }
             .things-to-try { display: none; }
             .footer { display: none; }
+            .mobile-info-toggle {
+                display: block;
+                text-align: center;
+                padding: 6px 0;
+                font-size: 12px;
+            }
+            .mobile-info-toggle a { color: #888; text-decoration: none; }
+            .mobile-info-toggle a:hover { color: #4fc3f7; }
         }
 
         /* ============================================
@@ -355,6 +365,9 @@
             <button data-key="ctrl-c">^C</button>
             <button data-key="ctrl-z">^Z</button>
             <button data-key="ctrl-d">^D</button>
+        </div>
+        <div class="mobile-info-toggle">
+            <a href="#" id="mobileInfoToggle">More info</a>
         </div>
         <div class="mode-toggle" style="text-align: center; margin-bottom: 16px;">
             <a href="#" id="toggleFrame">Hide Terminal Frame</a>

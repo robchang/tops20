@@ -281,6 +281,20 @@ class KLH10WebInterface {
             });
         }
 
+        // Mobile "More info" toggle
+        const mobileInfoToggle = document.getElementById('mobileInfoToggle');
+        if (mobileInfoToggle) {
+            mobileInfoToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                const footer = document.querySelector('.footer');
+                const thingsToTry = document.querySelector('.things-to-try');
+                const showing = footer.style.display === 'block';
+                footer.style.display = showing ? '' : 'block';
+                if (thingsToTry) thingsToTry.style.display = showing ? '' : 'block';
+                e.target.textContent = showing ? 'More info' : 'Hide info';
+            });
+        }
+
         // Key toolbar buttons
         this.ctrlActive = false;
         const keyToolbar = document.getElementById('keyToolbar');
@@ -753,6 +767,11 @@ class KLH10WebInterface {
         }
         
         if (output.length > 0) {
+            // KLH10 command mode (C/WASM) sends bare LF; convert to CR+LF for display.
+            // TOPS-20 sends CR+LF natively, so no conversion needed in run mode.
+            if (this.inRuncmdMode) {
+                output = output.replace(/(?<!\r)\n/g, '\r\n');
+            }
             this.terminal.write(output);
         }
         
