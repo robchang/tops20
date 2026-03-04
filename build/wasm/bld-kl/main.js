@@ -194,13 +194,18 @@ class KLH10WebInterface {
         if (screenWidth === 0 || screenHeight === 0) return;
 
         // Calculate font size that fits 80x24 in the screen area
-        // Cell dimensions are approximately: width ~ fontSize * 0.6, height ~ fontSize * 1.2
-        const maxByWidth = screenWidth / (80 * 0.6);
-        const maxByHeight = screenHeight / (24 * 1.2);
+        // Use actual cell dimensions from xterm if available, otherwise approximate
+        const cellWidth = this.terminal._core?._renderService?.dimensions?.css?.cell?.width || (this.terminal.options.fontSize * 0.6);
+        const cellHeight = this.terminal._core?._renderService?.dimensions?.css?.cell?.height || (this.terminal.options.fontSize * 1.2);
+        const charRatio = cellWidth / cellHeight;
+
+        // Calculate max font size by width and height constraints
+        const maxByWidth = screenWidth / (80 * (cellWidth / this.terminal.options.fontSize));
+        const maxByHeight = screenHeight / (24 * (cellHeight / this.terminal.options.fontSize));
         const fontSize = Math.max(4, Math.min(Math.floor(Math.min(maxByWidth, maxByHeight)), 32));
 
         this.terminal.options.fontSize = fontSize;
-        this.fitAddon.fit();
+        // Always force exactly 80x24 — don't let fitAddon choose different dimensions
         this.terminal.resize(80, 24);
     }
 
