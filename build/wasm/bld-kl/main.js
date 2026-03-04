@@ -184,10 +184,48 @@ class KLH10WebInterface {
     adjustTerminalToScreen() {
         const screenEl = document.querySelector('.vt100-screen');
         if (!screenEl) return;
+        if (screenEl.clientWidth === 0) return;
 
-        if (screenEl.clientWidth === 0 || screenEl.clientHeight === 0) return;
+        if (this.isMobileLayout()) {
+            // Mobile: compute font size from available width and height.
+            // Probe at a reference size to measure actual cell dimensions,
+            // then scale to fit 80x24 in the available space.
+            const probeSize = 14;
+            this.terminal.options.fontSize = probeSize;
+            this.fitAddon.fit();
+            const colsAtProbe = this.terminal.cols;
 
-        // Binary search for the largest font size where 80x24 fits in the container
+            // Measure actual cell height from rendered probe
+            const xtermScreen = document.querySelector('.xterm-screen');
+            const probeRows = this.terminal.rows;
+            const cellH = (xtermScreen && probeRows > 0)
+                ? xtermScreen.clientHeight / probeRows
+                : probeSize * 1.2;
+
+            // Width constraint: fit 80 columns
+            const fontByWidth = Math.floor(probeSize * colsAtProbe / 80);
+
+            // Height constraint: fit 24 rows in available viewport height
+            const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            const toolbarH = document.getElementById('keyToolbar')?.offsetHeight || 0;
+            const statusH = document.querySelector('.status')?.offsetHeight || 0;
+            const controlsH = document.getElementById('simpleControls')?.offsetHeight || 0;
+            const screenPad = 10; // .vt100-screen padding + border
+            const bodyPad = 12;   // body padding + margins
+            const availH = vh - toolbarH - statusH - controlsH - screenPad - bodyPad;
+            const cellHPerPx = cellH / probeSize; // cell height per 1px of font size
+            const fontByHeight = availH > 0
+                ? Math.floor(availH / (24 * cellHPerPx))
+                : 32;
+
+            const targetFont = Math.max(4, Math.min(fontByWidth, fontByHeight, 32));
+            this.terminal.options.fontSize = targetFont;
+            this.terminal.resize(80, 24);
+            return;
+        }
+
+        // Desktop: binary search for the largest font where 80x24 fits in the container
+        if (screenEl.clientHeight === 0) return;
         let lo = 4, hi = 32;
         while (lo < hi) {
             const mid = Math.ceil((lo + hi) / 2);
@@ -956,5 +994,5 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
         return;
     }
-    new KLH10WebInterface();
+    window.__klh10 = new KLH10WebInterface();
 });
